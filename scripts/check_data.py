@@ -16,5 +16,8 @@ df = pd.read_csv(
     parse_dates=["date"],
 )
 
+df["last_2_digits"] = df["last_2_digits"].str.zfill(2)
+
+
 
 print(df.head())

@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# VS Code
+.vscode/
+
+# Generated data
+data/processed/*
+!data/processed/.gitkeep
+
+# Generated artifacts
+artifacts/figures/*
+!artifacts/figures/.gitkeep
+
+artifacts/tables/*
+!artifacts/tables/.gitkeep
+
+artifacts/models/*
+!artifacts/models/.gitkeep
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
