@@ -10,7 +10,7 @@ from scipy.stats import binomtest
 from sklearn.metrics import log_loss
 
 
-PROJECT_DIR = Path(__file__).resolve().parents[1]
+PROJECT_DIR = Path(__file__).resolve().parents[2]
 
 DATA_FILE = (
     PROJECT_DIR
@@ -112,14 +112,14 @@ def build_features(
             f"last_2_lag_{lag}"
         ] = df["last_2_target"].shift(lag)
 
-    # Giá trị đã shift để không dùng target hiện tại
+    # Chỉ dùng lịch sử trước ngày hiện tại
     historical_target = (
         df["last_2_target"].shift(1)
     )
 
     # Tần suất của từng số trong các cửa sổ quá khứ
     for window in ROLLING_WINDOWS:
-        for number in range(100):
+        for number in range(NUMBER_OF_CLASSES):
             feature_data[
                 f"freq_{number:02d}_w{window}"
             ] = (
@@ -132,6 +132,7 @@ def build_features(
                 .mean()
             )
 
+    # Feature chu kỳ thời gian
     day_of_week = df["date"].dt.dayofweek
     month = df["date"].dt.month
 
@@ -171,9 +172,11 @@ def prepare_data(
         features.loc[valid]
         .astype(float)
         .reset_index(drop=True),
+
         df.loc[valid, "last_2_target"]
         .astype(int)
         .reset_index(drop=True),
+
         df.loc[valid, "date"]
         .reset_index(drop=True),
     )
@@ -202,13 +205,19 @@ def align_probabilities(
     model: CatBoostClassifier,
     probabilities: np.ndarray,
 ) -> np.ndarray:
-    """Căn xác suất theo đầy đủ 100 lớp."""
+    """
+    Căn probability của CatBoost về đầy đủ 100 lớp 00-99.
+
+    Nếu một lớp không xuất hiện trong training fold,
+    xác suất của lớp đó sẽ bằng 0 trước khi blend Uniform.
+    """
 
     aligned = np.zeros(
         (
             len(probabilities),
             NUMBER_OF_CLASSES,
-        )
+        ),
+        dtype=float,
     )
 
     for model_column, label in enumerate(
@@ -242,7 +251,15 @@ def select_blend_weight(
     y_validation: np.ndarray,
     validation_probabilities: np.ndarray,
 ) -> tuple[float, float]:
-    """Chọn trọng số hoàn toàn trên validation."""
+    """
+    Chọn trọng số CatBoost vs Uniform chỉ trên validation.
+
+    weight = 1:
+        dùng hoàn toàn CatBoost.
+
+    weight = 0:
+        dùng hoàn toàn Uniform.
+    """
 
     candidates = []
 
@@ -295,29 +312,72 @@ def top_k_accuracy(
         axis=1,
     )[:, -k:]
 
-    return np.mean(
-        [
-            true_label in candidates
-            for true_label, candidates
-            in zip(y_true, top_k)
-        ]
+    hits = [
+        true_label in candidates
+        for true_label, candidates
+        in zip(y_true, top_k)
+    ]
+
+    return float(np.mean(hits))
+
+
+def true_class_ranks(
+    y_true: np.ndarray,
+    probabilities: np.ndarray,
+) -> np.ndarray:
+    """
+    Tính rank của kết quả thực tế.
+
+    Rank 1:
+        kết quả thật có probability cao nhất.
+
+    Rank 100:
+        kết quả thật có probability thấp nhất.
+    """
+
+    order = np.argsort(
+        -probabilities,
+        axis=1,
     )
+
+    ranks = np.empty(
+        len(y_true),
+        dtype=int,
+    )
+
+    for row_index, true_label in enumerate(
+        y_true
+    ):
+        ranks[row_index] = (
+            np.where(
+                order[row_index] == true_label
+            )[0][0]
+            + 1
+        )
+
+    return ranks
 
 
 def multiclass_brier_score(
     y_true: np.ndarray,
     probabilities: np.ndarray,
 ) -> float:
-    """Tính Brier score 100 lớp."""
+    """Tính Brier score cho bài toán 100 lớp."""
 
     one_hot = np.eye(
         NUMBER_OF_CLASSES
     )[y_true]
 
-    return np.mean(
-        np.sum(
-            (probabilities - one_hot) ** 2,
-            axis=1,
+    return float(
+        np.mean(
+            np.sum(
+                (
+                    probabilities
+                    - one_hot
+                )
+                ** 2,
+                axis=1,
+            )
         )
     )
 
@@ -326,15 +386,27 @@ def evaluate(
     y_true: np.ndarray,
     probabilities: np.ndarray,
 ) -> dict:
-    """Đánh giá mô hình."""
+    """Đánh giá probability model 100 lớp."""
 
     predictions = probabilities.argmax(
         axis=1
     )
 
+    ranks = true_class_ranks(
+        y_true,
+        probabilities,
+    )
+
     return {
-        "top_1_accuracy": np.mean(
-            predictions == y_true
+        "top_1_accuracy": float(
+            np.mean(
+                predictions == y_true
+            )
+        ),
+        "top_3_accuracy": top_k_accuracy(
+            y_true,
+            probabilities,
+            k=3,
         ),
         "top_5_accuracy": top_k_accuracy(
             y_true,
@@ -346,14 +418,51 @@ def evaluate(
             probabilities,
             k=10,
         ),
-        "log_loss": log_loss(
+        "top_20_accuracy": top_k_accuracy(
             y_true,
             probabilities,
-            labels=list(range(100)),
+            k=20,
         ),
-        "brier_score": multiclass_brier_score(
-            y_true,
-            probabilities,
+        "log_loss": float(
+            log_loss(
+                y_true,
+                probabilities,
+                labels=list(
+                    range(
+                        NUMBER_OF_CLASSES
+                    )
+                ),
+            )
+        ),
+        "brier_score": (
+            multiclass_brier_score(
+                y_true,
+                probabilities,
+            )
+        ),
+        "mean_true_rank": float(
+            np.mean(ranks)
+        ),
+        "median_true_rank": float(
+            np.median(ranks)
+        ),
+        "true_rank_q25": float(
+            np.quantile(
+                ranks,
+                0.25,
+            )
+        ),
+        "true_rank_q75": float(
+            np.quantile(
+                ranks,
+                0.75,
+            )
+        ),
+        "true_rank_q90": float(
+            np.quantile(
+                ranks,
+                0.90,
+            )
         ),
     }
 
@@ -382,19 +491,26 @@ def run_fold(
         fold["test_end"],
     )
 
-    x_train = features.loc[train_mask]
-    y_train = target.loc[train_mask]
+    x_train = features.loc[
+        train_mask
+    ]
+    y_train = target.loc[
+        train_mask
+    ]
 
     x_validation = features.loc[
         validation_mask
     ]
-
     y_validation = target.loc[
         validation_mask
     ]
 
-    x_test = features.loc[test_mask]
-    y_test = target.loc[test_mask]
+    x_test = features.loc[
+        test_mask
+    ]
+    y_test = target.loc[
+        test_mask
+    ]
 
     print(
         f"\nFold {fold['name']}: "
@@ -415,6 +531,9 @@ def run_fold(
         use_best_model=True,
     )
 
+    # -----------------------------
+    # Validation probability
+    # -----------------------------
     validation_probabilities = (
         align_probabilities(
             model,
@@ -432,10 +551,15 @@ def run_fold(
         validation_probabilities,
     )
 
+    # -----------------------------
+    # Test probability
+    # -----------------------------
     test_probabilities = (
         align_probabilities(
             model,
-            model.predict_proba(x_test),
+            model.predict_proba(
+                x_test
+            ),
         )
     )
 
@@ -446,48 +570,165 @@ def run_fold(
         )
     )
 
+    y_test_array = (
+        y_test.to_numpy()
+    )
+
     metrics = evaluate(
-        y_test.to_numpy(),
+        y_test_array,
         test_probabilities,
     )
 
     result = {
         "fold": fold["name"],
-        "train_size": len(x_train),
-        "validation_size": len(x_validation),
-        "test_size": len(x_test),
+        "train_size": len(
+            x_train
+        ),
+        "validation_size": len(
+            x_validation
+        ),
+        "test_size": len(
+            x_test
+        ),
         "best_iteration": (
             model.get_best_iteration()
         ),
-        "model_weight": selected_weight,
+        "model_weight": (
+            selected_weight
+        ),
         "validation_log_loss": (
             validation_log_loss
         ),
         **metrics,
     }
 
+    # -----------------------------
+    # Prediction detail
+    # -----------------------------
+    predicted = (
+        test_probabilities.argmax(
+            axis=1
+        )
+    )
+
+    true_probabilities = (
+        test_probabilities[
+            np.arange(
+                len(y_test_array)
+            ),
+            y_test_array,
+        ]
+    )
+
+    actual_ranks = (
+        true_class_ranks(
+            y_test_array,
+            test_probabilities,
+        )
+    )
+
+    sorted_classes = np.argsort(
+        -test_probabilities,
+        axis=1,
+    )
+
+    sorted_probabilities = (
+        np.take_along_axis(
+            test_probabilities,
+            sorted_classes,
+            axis=1,
+        )
+    )
+
     predictions = pd.DataFrame(
         {
             "date": dates.loc[
                 test_mask
             ].to_numpy(),
-            "actual": y_test.to_numpy(),
-            "predicted": (
-                test_probabilities.argmax(
-                    axis=1
-                )
+            "fold": fold["name"],
+            "model": (
+                "catboost_last2"
+            ),
+            "actual": (
+                y_test_array
+            ),
+            "pred_top1": (
+                predicted
+            ),
+            "actual_probability": (
+                true_probabilities
+            ),
+            "actual_rank": (
+                actual_ranks
+            ),
+            "top1_number": (
+                sorted_classes[
+                    :, 0
+                ]
+            ),
+            "top1_probability": (
+                sorted_probabilities[
+                    :, 0
+                ]
+            ),
+            "top2_number": (
+                sorted_classes[
+                    :, 1
+                ]
+            ),
+            "top2_probability": (
+                sorted_probabilities[
+                    :, 1
+                ]
+            ),
+            "top3_number": (
+                sorted_classes[
+                    :, 2
+                ]
+            ),
+            "top3_probability": (
+                sorted_probabilities[
+                    :, 2
+                ]
+            ),
+            "top5_probability_sum": (
+                sorted_probabilities[
+                    :, :5
+                ].sum(axis=1)
+            ),
+            "top10_probability_sum": (
+                sorted_probabilities[
+                    :, :10
+                ].sum(axis=1)
             ),
         }
     )
 
-    true_probabilities = (
-        test_probabilities[
-            np.arange(len(y_test)),
-            y_test.to_numpy(),
-        ]
+    # Full probability distribution 00-99
+    probability_frame = pd.DataFrame(
+        test_probabilities,
+        columns=[
+            f"p_{number:02d}"
+            for number
+            in range(
+                NUMBER_OF_CLASSES
+            )
+        ],
     )
 
-    predictions["model_loss"] = (
+    predictions = pd.concat(
+        [
+            predictions.reset_index(
+                drop=True
+            ),
+            probability_frame,
+        ],
+        axis=1,
+    )
+
+    predictions[
+        "model_loss"
+    ] = (
         -np.log(
             np.clip(
                 true_probabilities,
@@ -497,16 +738,22 @@ def run_fold(
         )
     )
 
-    predictions["uniform_loss"] = (
-        np.log(NUMBER_OF_CLASSES)
+    predictions[
+        "uniform_loss"
+    ] = np.log(
+        NUMBER_OF_CLASSES
     )
 
-    predictions["improvement"] = (
-        predictions["uniform_loss"]
-        - predictions["model_loss"]
+    predictions[
+        "improvement"
+    ] = (
+        predictions[
+            "uniform_loss"
+        ]
+        - predictions[
+            "model_loss"
+        ]
     )
-
-    predictions["fold"] = fold["name"]
 
     return result, predictions
 
@@ -518,29 +765,46 @@ def statistical_tests(
 
     number_correct = (
         predictions["actual"]
-        .eq(predictions["predicted"])
+        .eq(
+            predictions[
+                "pred_top1"
+            ]
+        )
         .sum()
     )
 
-    number_tested = len(predictions)
+    number_tested = len(
+        predictions
+    )
 
-    accuracy_p_value = binomtest(
-        k=number_correct,
-        n=number_tested,
-        p=0.01,
-        alternative="greater",
-    ).pvalue
+    accuracy_p_value = (
+        binomtest(
+            k=number_correct,
+            n=number_tested,
+            p=0.01,
+            alternative="greater",
+        ).pvalue
+    )
 
+    # -----------------------------
     # Block bootstrap theo năm
+    # -----------------------------
     yearly_improvement = (
         predictions.assign(
-            year=predictions["date"].dt.year
+            year=predictions[
+                "date"
+            ].dt.year
         )
-        .groupby("year")["improvement"]
+        .groupby(
+            "year"
+        )["improvement"]
         .mean()
     )
 
-    values = yearly_improvement.to_numpy()
+    values = (
+        yearly_improvement
+        .to_numpy()
+    )
 
     random_generator = (
         np.random.default_rng(
@@ -548,46 +812,92 @@ def statistical_tests(
         )
     )
 
-    bootstrap_means = np.empty(
-        NUMBER_OF_BOOTSTRAPS
+    bootstrap_means = (
+        np.empty(
+            NUMBER_OF_BOOTSTRAPS
+        )
     )
 
     for iteration in range(
         NUMBER_OF_BOOTSTRAPS
     ):
-        sample = random_generator.choice(
-            values,
-            size=len(values),
-            replace=True,
+        sample = (
+            random_generator.choice(
+                values,
+                size=len(values),
+                replace=True,
+            )
         )
 
-        bootstrap_means[iteration] = (
-            sample.mean()
-        )
+        bootstrap_means[
+            iteration
+        ] = sample.mean()
 
-    lower, upper = np.quantile(
-        bootstrap_means,
-        [0.025, 0.975],
+    lower, upper = (
+        np.quantile(
+            bootstrap_means,
+            [
+                0.025,
+                0.975,
+            ],
+        )
+    )
+
+    ranks = (
+        predictions[
+            "actual_rank"
+        ].to_numpy()
     )
 
     return {
-        "number_tested": number_tested,
+        "number_tested": (
+            number_tested
+        ),
         "number_correct": int(
             number_correct
         ),
-        "top_1_accuracy": (
-            number_correct / number_tested
+        "top_1_accuracy": float(
+            number_correct
+            / number_tested
         ),
-        "binomial_p_value": (
+        "binomial_p_value": float(
             accuracy_p_value
         ),
-        "mean_log_loss_improvement": (
+        "mean_log_loss_improvement": float(
             predictions[
                 "improvement"
             ].mean()
         ),
-        "bootstrap_ci_low": lower,
-        "bootstrap_ci_high": upper,
+        "bootstrap_ci_low": float(
+            lower
+        ),
+        "bootstrap_ci_high": float(
+            upper
+        ),
+        "mean_true_rank": float(
+            np.mean(ranks)
+        ),
+        "median_true_rank": float(
+            np.median(ranks)
+        ),
+        "true_rank_q25": float(
+            np.quantile(
+                ranks,
+                0.25,
+            )
+        ),
+        "true_rank_q75": float(
+            np.quantile(
+                ranks,
+                0.75,
+            )
+        ),
+        "true_rank_q90": float(
+            np.quantile(
+                ranks,
+                0.90,
+            )
+        ),
     }
 
 
@@ -612,32 +922,43 @@ def plot_fold_results(
         fold_results["log_loss"],
         width,
         label="CatBoost",
-        color="steelblue",
     )
 
     ax.bar(
         positions + width / 2,
-        np.log(100),
+        np.full(
+            len(fold_results),
+            np.log(
+                NUMBER_OF_CLASSES
+            ),
+        ),
         width,
         label="Uniform",
-        color="gray",
     )
 
-    ax.set_xticks(positions)
+    ax.set_xticks(
+        positions
+    )
+
     ax.set_xticklabels(
         fold_results["fold"]
     )
 
-    ax.set_ylabel("Log loss")
+    ax.set_ylabel(
+        "Log loss"
+    )
 
     ax.set_title(
-        "CatBoost dự đoán trực tiếp 00–99",
+        "CatBoost dự đoán trực tiếp 00-99",
         fontsize=15,
         fontweight="bold",
     )
 
     ax.legend()
-    ax.grid(axis="y", alpha=0.25)
+    ax.grid(
+        axis="y",
+        alpha=0.25,
+    )
 
     output_file = (
         FIGURE_DIR
@@ -654,10 +975,14 @@ def plot_fold_results(
     plt.show()
     plt.close(fig)
 
-    print(f"Đã lưu: {output_file}")
+    print(
+        f"Đã lưu: {output_file}"
+    )
 
 
 def main() -> None:
+    """Chạy toàn bộ experiment."""
+
     TABLE_DIR.mkdir(
         parents=True,
         exist_ok=True,
@@ -670,22 +995,30 @@ def main() -> None:
 
     df = read_data()
 
-    features, target, dates = (
-        prepare_data(df)
-    )
+    (
+        features,
+        target,
+        dates,
+    ) = prepare_data(df)
 
     result_records = []
     prediction_frames = []
 
     for fold in FOLDS:
-        result, predictions = run_fold(
+        (
+            result,
+            predictions,
+        ) = run_fold(
             features,
             target,
             dates,
             fold,
         )
 
-        result_records.append(result)
+        result_records.append(
+            result
+        )
+
         prediction_frames.append(
             predictions
         )
@@ -694,28 +1027,74 @@ def main() -> None:
         result_records
     )
 
+    # -----------------------------
+    # Uniform comparison
+    # -----------------------------
+    uniform_log_loss = np.log(
+        NUMBER_OF_CLASSES
+    )
+
+    fold_results[
+        "uniform_log_loss"
+    ] = uniform_log_loss
+
+    fold_results[
+        "log_loss_gain_vs_uniform"
+    ] = (
+        uniform_log_loss
+        - fold_results[
+            "log_loss"
+        ]
+    )
+
+    fold_results[
+        "relative_log_loss_gain_pct"
+    ] = (
+        fold_results[
+            "log_loss_gain_vs_uniform"
+        ]
+        / uniform_log_loss
+        * 100
+    )
+
     predictions = pd.concat(
         prediction_frames,
         ignore_index=True,
     )
 
-    significance = statistical_tests(
-        predictions
+    significance = (
+        statistical_tests(
+            predictions
+        )
     )
 
-    print("\n" + "=" * 130)
-    print("KẾT QUẢ CATBOOST 100 LỚP")
-    print("=" * 130)
+    print(
+        "\n"
+        + "=" * 160
+    )
+
+    print(
+        "KẾT QUẢ CATBOOST 100 LỚP"
+    )
+
+    print(
+        "=" * 160
+    )
 
     print(
         fold_results.to_string(
             index=False,
             formatters={
-                "model_weight": "{:.2f}".format,
+                "model_weight": (
+                    "{:.2f}".format
+                ),
                 "validation_log_loss": (
                     "{:.6f}".format
                 ),
                 "top_1_accuracy": (
+                    "{:.4%}".format
+                ),
+                "top_3_accuracy": (
                     "{:.4%}".format
                 ),
                 "top_5_accuracy": (
@@ -724,17 +1103,57 @@ def main() -> None:
                 "top_10_accuracy": (
                     "{:.4%}".format
                 ),
-                "log_loss": "{:.6f}".format,
-                "brier_score": "{:.6f}".format,
+                "top_20_accuracy": (
+                    "{:.4%}".format
+                ),
+                "log_loss": (
+                    "{:.6f}".format
+                ),
+                "brier_score": (
+                    "{:.6f}".format
+                ),
+                "mean_true_rank": (
+                    "{:.2f}".format
+                ),
+                "median_true_rank": (
+                    "{:.2f}".format
+                ),
+                "true_rank_q25": (
+                    "{:.2f}".format
+                ),
+                "true_rank_q75": (
+                    "{:.2f}".format
+                ),
+                "true_rank_q90": (
+                    "{:.2f}".format
+                ),
+                "uniform_log_loss": (
+                    "{:.6f}".format
+                ),
+                "log_loss_gain_vs_uniform": (
+                    "{:.6f}".format
+                ),
+                "relative_log_loss_gain_pct": (
+                    "{:.4f}".format
+                ),
             },
         )
     )
 
-    print("\nKiểm định tổng hợp:")
+    print(
+        "\nKiểm định tổng hợp:"
+    )
 
-    for key, value in significance.items():
-        print(f"{key}: {value}")
+    for key, value in (
+        significance.items()
+    ):
+        print(
+            f"{key}: {value}"
+        )
 
+    # -----------------------------
+    # Save artifacts
+    # -----------------------------
     fold_results.to_csv(
         TABLE_DIR
         / "modern_ml_last2_folds.csv",
@@ -758,7 +1177,9 @@ def main() -> None:
         encoding="utf-8-sig",
     )
 
-    plot_fold_results(fold_results)
+    plot_fold_results(
+        fold_results
+    )
 
 
 if __name__ == "__main__":

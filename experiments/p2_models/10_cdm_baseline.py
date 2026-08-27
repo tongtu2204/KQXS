@@ -1,0 +1,1042 @@
+"""CDM baseline cho bài toán dự đoán hai chữ số cuối 00-99.
+
+Mô hình:
+    P_t(j) = (n_j + alpha) / (N + 100 * alpha)
+
+Trong đó:
+    n_j   : số lần giá trị j xuất hiện trước ngày t
+    N     : tổng số quan sát trước ngày t
+    alpha : symmetric Dirichlet prior
+
+Mô hình được đánh giá theo walk-forward:
+    predict -> observe actual -> update counts.
+"""
+
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from scipy.stats import binomtest
+from sklearn.metrics import log_loss
+
+
+PROJECT_DIR = Path(__file__).resolve().parents[2]
+
+DATA_FILE = (
+    PROJECT_DIR
+    / "data"
+    / "processed"
+    / "kqxsmb_digits.csv"
+)
+
+TABLE_DIR = PROJECT_DIR / "artifacts" / "tables"
+FIGURE_DIR = PROJECT_DIR / "artifacts" / "figures"
+
+NUMBER_OF_CLASSES = 100
+
+# CDM baseline: symmetric Dirichlet prior
+ALPHA = 1.0
+
+RANDOM_STATE = 42
+NUMBER_OF_BOOTSTRAPS = 20_000
+
+# Dùng cùng test periods với experiment 09
+FOLDS = [
+    {
+        "name": "2020-2021",
+        "test_start": 2020,
+        "test_end": 2021,
+    },
+    {
+        "name": "2022-2023",
+        "test_start": 2022,
+        "test_end": 2023,
+    },
+    {
+        "name": "2024-2026",
+        "test_start": 2024,
+        "test_end": 2026,
+    },
+]
+
+
+# ============================================================
+# DATA
+# ============================================================
+
+
+def read_data() -> pd.DataFrame:
+    """Đọc dữ liệu và chuẩn hóa target 00-99."""
+
+    df = pd.read_csv(
+        DATA_FILE,
+        dtype={
+            "full_result": str,
+            "last_2_digits": str,
+        },
+        parse_dates=["date"],
+    )
+
+    df = (
+        df.sort_values("date")
+        .reset_index(drop=True)
+    )
+
+    df["last_2_target"] = (
+        df["last_2_digits"]
+        .str.zfill(2)
+        .astype(int)
+    )
+
+    return df
+
+
+# ============================================================
+# CDM
+# ============================================================
+
+
+def cdm_probability(
+    counts: np.ndarray,
+    alpha: float = ALPHA,
+) -> np.ndarray:
+    """
+    Tính posterior predictive probability của CDM.
+
+    P(j | history)
+        = (n_j + alpha)
+          / (N + K * alpha)
+    """
+
+    counts = np.asarray(
+        counts,
+        dtype=float,
+    )
+
+    denominator = (
+        counts.sum()
+        + NUMBER_OF_CLASSES * alpha
+    )
+
+    probabilities = (
+        counts + alpha
+    ) / denominator
+
+    return probabilities
+
+
+# ============================================================
+# RANKING
+# ============================================================
+
+
+def create_tie_break_priority() -> np.ndarray:
+    """
+    Tạo thứ tự tie-break cố định.
+
+    CDM thường có nhiều số có cùng count,
+    dẫn đến cùng probability.
+
+    Dùng permutation cố định giúp:
+    - reproducible;
+    - không ưu tiên số nhỏ chỉ vì sort ascending;
+    - không nhìn actual result.
+    """
+
+    rng = np.random.default_rng(
+        RANDOM_STATE
+    )
+
+    permutation = rng.permutation(
+        NUMBER_OF_CLASSES
+    )
+
+    priority = np.empty(
+        NUMBER_OF_CLASSES,
+        dtype=int,
+    )
+
+    priority[permutation] = np.arange(
+        NUMBER_OF_CLASSES
+    )
+
+    return priority
+
+
+TIE_BREAK_PRIORITY = (
+    create_tie_break_priority()
+)
+
+
+def rank_classes(
+    probabilities: np.ndarray,
+) -> np.ndarray:
+    """
+    Sort class theo probability giảm dần.
+
+    Nếu probability bằng nhau:
+        dùng deterministic random tie-break.
+    """
+
+    classes = np.arange(
+        NUMBER_OF_CLASSES
+    )
+
+    order = np.lexsort(
+        (
+            TIE_BREAK_PRIORITY[
+                classes
+            ],
+            -probabilities,
+        )
+    )
+
+    return order
+
+
+def actual_rank(
+    actual: int,
+    order: np.ndarray,
+) -> int:
+    """Rank 1-100 của kết quả thực tế."""
+
+    return int(
+        np.where(
+            order == actual
+        )[0][0]
+        + 1
+    )
+
+
+def top_k_hit(
+    actual: int,
+    order: np.ndarray,
+    k: int,
+) -> bool:
+    """Kết quả thật có nằm trong Top-k hay không."""
+
+    return bool(
+        actual in order[:k]
+    )
+
+
+# ============================================================
+# WALK-FORWARD
+# ============================================================
+
+
+def run_fold(
+    df: pd.DataFrame,
+    fold: dict,
+) -> pd.DataFrame:
+    """
+    Chạy CDM walk-forward cho một test fold.
+
+    Trước ngày đầu của test:
+        khởi tạo count bằng toàn bộ historical data.
+
+    Trong test:
+        predict ngày t
+        -> observe actual
+        -> update count
+        -> sang ngày t+1.
+    """
+
+    test_start = fold[
+        "test_start"
+    ]
+
+    test_end = fold[
+        "test_end"
+    ]
+
+    history_mask = (
+        df["date"].dt.year
+        < test_start
+    )
+
+    test_mask = (
+        df["date"].dt.year
+        .between(
+            test_start,
+            test_end,
+        )
+    )
+
+    history = df.loc[
+        history_mask,
+        "last_2_target",
+    ]
+
+    test = (
+        df.loc[
+            test_mask,
+            [
+                "date",
+                "last_2_target",
+            ],
+        ]
+        .copy()
+        .sort_values("date")
+        .reset_index(drop=True)
+    )
+
+    counts = np.bincount(
+        history.to_numpy(),
+        minlength=NUMBER_OF_CLASSES,
+    ).astype(float)
+
+    print(
+        f"\nFold {fold['name']}: "
+        f"history={len(history):,}, "
+        f"test={len(test):,}"
+    )
+
+    records = []
+
+    for _, row in test.iterrows():
+
+        date = row["date"]
+
+        actual = int(
+            row["last_2_target"]
+        )
+
+        # ---------------------------------
+        # Predict using past only
+        # ---------------------------------
+        probabilities = (
+            cdm_probability(
+                counts,
+                alpha=ALPHA,
+            )
+        )
+
+        order = rank_classes(
+            probabilities
+        )
+
+        sorted_probabilities = (
+            probabilities[order]
+        )
+
+        predicted = int(
+            order[0]
+        )
+
+        true_probability = float(
+            probabilities[actual]
+        )
+
+        true_rank = actual_rank(
+            actual,
+            order,
+        )
+
+        record = {
+            "date": date,
+            "fold": fold["name"],
+            "model": "cdm_baseline",
+            "alpha": ALPHA,
+
+            "history_size": int(
+                counts.sum()
+            ),
+
+            "actual": actual,
+            "pred_top1": predicted,
+
+            "actual_probability": (
+                true_probability
+            ),
+
+            "actual_rank": (
+                true_rank
+            ),
+
+            "top1_number": int(
+                order[0]
+            ),
+            "top1_probability": float(
+                sorted_probabilities[0]
+            ),
+
+            "top2_number": int(
+                order[1]
+            ),
+            "top2_probability": float(
+                sorted_probabilities[1]
+            ),
+
+            "top3_number": int(
+                order[2]
+            ),
+            "top3_probability": float(
+                sorted_probabilities[2]
+            ),
+
+            "top5_probability_sum": float(
+                sorted_probabilities[
+                    :5
+                ].sum()
+            ),
+
+            "top10_probability_sum": float(
+                sorted_probabilities[
+                    :10
+                ].sum()
+            ),
+
+            "top1_hit": int(
+                true_rank <= 1
+            ),
+
+            "top3_hit": int(
+                true_rank <= 3
+            ),
+
+            "top5_hit": int(
+                true_rank <= 5
+            ),
+
+            "top10_hit": int(
+                true_rank <= 10
+            ),
+
+            "top20_hit": int(
+                true_rank <= 20
+            ),
+        }
+
+        # Full probability distribution
+        for number in range(
+            NUMBER_OF_CLASSES
+        ):
+            record[
+                f"p_{number:02d}"
+            ] = float(
+                probabilities[number]
+            )
+
+        record["model_loss"] = float(
+            -np.log(
+                np.clip(
+                    true_probability,
+                    1e-15,
+                    1,
+                )
+            )
+        )
+
+        record["uniform_loss"] = float(
+            np.log(
+                NUMBER_OF_CLASSES
+            )
+        )
+
+        record["improvement"] = (
+            record["uniform_loss"]
+            - record["model_loss"]
+        )
+
+        records.append(
+            record
+        )
+
+        # ---------------------------------
+        # Update AFTER observing actual
+        # ---------------------------------
+        counts[actual] += 1
+
+    return pd.DataFrame(
+        records
+    )
+
+
+# ============================================================
+# EVALUATION
+# ============================================================
+
+
+def evaluate_fold(
+    predictions: pd.DataFrame,
+) -> dict:
+    """Tính metric cho một fold."""
+
+    probabilities = (
+        predictions[
+            [
+                f"p_{number:02d}"
+                for number
+                in range(
+                    NUMBER_OF_CLASSES
+                )
+            ]
+        ]
+        .to_numpy()
+    )
+
+    y_true = (
+        predictions["actual"]
+        .to_numpy()
+    )
+
+    ranks = (
+        predictions["actual_rank"]
+        .to_numpy()
+    )
+
+    return {
+        "fold": (
+            predictions[
+                "fold"
+            ].iloc[0]
+        ),
+
+        "alpha": ALPHA,
+
+        "test_size": len(
+            predictions
+        ),
+
+        "top_1_accuracy": float(
+            np.mean(
+                ranks <= 1
+            )
+        ),
+
+        "top_3_accuracy": float(
+            np.mean(
+                ranks <= 3
+            )
+        ),
+
+        "top_5_accuracy": float(
+            np.mean(
+                ranks <= 5
+            )
+        ),
+
+        "top_10_accuracy": float(
+            np.mean(
+                ranks <= 10
+            )
+        ),
+
+        "top_20_accuracy": float(
+            np.mean(
+                ranks <= 20
+            )
+        ),
+
+        "log_loss": float(
+            log_loss(
+                y_true,
+                probabilities,
+                labels=list(
+                    range(
+                        NUMBER_OF_CLASSES
+                    )
+                ),
+            )
+        ),
+
+        "mean_true_rank": float(
+            np.mean(
+                ranks
+            )
+        ),
+
+        "median_true_rank": float(
+            np.median(
+                ranks
+            )
+        ),
+
+        "true_rank_q25": float(
+            np.quantile(
+                ranks,
+                0.25,
+            )
+        ),
+
+        "true_rank_q75": float(
+            np.quantile(
+                ranks,
+                0.75,
+            )
+        ),
+
+        "true_rank_q90": float(
+            np.quantile(
+                ranks,
+                0.90,
+            )
+        ),
+    }
+
+
+def statistical_tests(
+    predictions: pd.DataFrame,
+) -> dict:
+    """Kiểm định tổng hợp CDM vs Uniform."""
+
+    number_tested = len(
+        predictions
+    )
+
+    number_correct = int(
+        predictions[
+            "actual_rank"
+        ]
+        .le(1)
+        .sum()
+    )
+
+    # Uniform top-1 baseline = 1%
+    accuracy_p_value = (
+        binomtest(
+            k=number_correct,
+            n=number_tested,
+            p=1 / NUMBER_OF_CLASSES,
+            alternative="greater",
+        ).pvalue
+    )
+
+    # ---------------------------------
+    # Block bootstrap by year
+    # ---------------------------------
+    yearly_improvement = (
+        predictions.assign(
+            year=predictions[
+                "date"
+            ].dt.year
+        )
+        .groupby(
+            "year"
+        )[
+            "improvement"
+        ]
+        .mean()
+    )
+
+    values = (
+        yearly_improvement
+        .to_numpy()
+    )
+
+    rng = np.random.default_rng(
+        RANDOM_STATE
+    )
+
+    bootstrap_means = np.empty(
+        NUMBER_OF_BOOTSTRAPS
+    )
+
+    for iteration in range(
+        NUMBER_OF_BOOTSTRAPS
+    ):
+
+        sample = rng.choice(
+            values,
+            size=len(values),
+            replace=True,
+        )
+
+        bootstrap_means[
+            iteration
+        ] = sample.mean()
+
+    lower, upper = np.quantile(
+        bootstrap_means,
+        [
+            0.025,
+            0.975,
+        ],
+    )
+
+    ranks = (
+        predictions[
+            "actual_rank"
+        ]
+        .to_numpy()
+    )
+
+    return {
+        "number_tested": (
+            number_tested
+        ),
+
+        "number_correct": (
+            number_correct
+        ),
+
+        "top_1_accuracy": float(
+            number_correct
+            / number_tested
+        ),
+
+        "binomial_p_value": float(
+            accuracy_p_value
+        ),
+
+        "mean_log_loss_improvement": float(
+            predictions[
+                "improvement"
+            ].mean()
+        ),
+
+        "bootstrap_ci_low": float(
+            lower
+        ),
+
+        "bootstrap_ci_high": float(
+            upper
+        ),
+
+        "mean_true_rank": float(
+            np.mean(
+                ranks
+            )
+        ),
+
+        "median_true_rank": float(
+            np.median(
+                ranks
+            )
+        ),
+
+        "true_rank_q25": float(
+            np.quantile(
+                ranks,
+                0.25,
+            )
+        ),
+
+        "true_rank_q75": float(
+            np.quantile(
+                ranks,
+                0.75,
+            )
+        ),
+
+        "true_rank_q90": float(
+            np.quantile(
+                ranks,
+                0.90,
+            )
+        ),
+    }
+
+
+# ============================================================
+# PLOTS
+# ============================================================
+
+
+def plot_fold_results(
+    fold_results: pd.DataFrame,
+) -> None:
+    """So sánh CDM log loss với Uniform."""
+
+    fig, ax = plt.subplots(
+        figsize=(10, 6),
+        constrained_layout=True,
+    )
+
+    positions = np.arange(
+        len(fold_results)
+    )
+
+    width = 0.35
+
+    ax.bar(
+        positions - width / 2,
+        fold_results[
+            "log_loss"
+        ],
+        width,
+        label="CDM",
+    )
+
+    ax.bar(
+        positions + width / 2,
+        np.full(
+            len(fold_results),
+            np.log(
+                NUMBER_OF_CLASSES
+            ),
+        ),
+        width,
+        label="Uniform",
+    )
+
+    ax.set_xticks(
+        positions
+    )
+
+    ax.set_xticklabels(
+        fold_results[
+            "fold"
+        ]
+    )
+
+    ax.set_ylabel(
+        "Log loss"
+    )
+
+    ax.set_title(
+        "CDM baseline vs Uniform",
+        fontsize=15,
+        fontweight="bold",
+    )
+
+    ax.legend()
+
+    ax.grid(
+        axis="y",
+        alpha=0.25,
+    )
+
+    output_file = (
+        FIGURE_DIR
+        / "cdm_baseline_log_loss.png"
+    )
+
+    fig.savefig(
+        output_file,
+        dpi=200,
+        bbox_inches="tight",
+        facecolor="white",
+    )
+
+    plt.show()
+
+    plt.close(
+        fig
+    )
+
+    print(
+        f"Đã lưu: {output_file}"
+    )
+
+
+# ============================================================
+# MAIN
+# ============================================================
+
+
+def main() -> None:
+    """Chạy CDM baseline."""
+
+    TABLE_DIR.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    FIGURE_DIR.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    df = read_data()
+
+    prediction_frames = []
+    fold_records = []
+
+    for fold in FOLDS:
+
+        fold_predictions = (
+            run_fold(
+                df,
+                fold,
+            )
+        )
+
+        fold_metrics = (
+            evaluate_fold(
+                fold_predictions
+            )
+        )
+
+        prediction_frames.append(
+            fold_predictions
+        )
+
+        fold_records.append(
+            fold_metrics
+        )
+
+    predictions = pd.concat(
+        prediction_frames,
+        ignore_index=True,
+    )
+
+    fold_results = pd.DataFrame(
+        fold_records
+    )
+
+    # ---------------------------------
+    # Uniform comparison
+    # ---------------------------------
+    uniform_log_loss = np.log(
+        NUMBER_OF_CLASSES
+    )
+
+    fold_results[
+        "uniform_log_loss"
+    ] = uniform_log_loss
+
+    fold_results[
+        "log_loss_gain_vs_uniform"
+    ] = (
+        uniform_log_loss
+        - fold_results[
+            "log_loss"
+        ]
+    )
+
+    fold_results[
+        "relative_log_loss_gain_pct"
+    ] = (
+        fold_results[
+            "log_loss_gain_vs_uniform"
+        ]
+        / uniform_log_loss
+        * 100
+    )
+
+    significance = (
+        statistical_tests(
+            predictions
+        )
+    )
+
+    # ---------------------------------
+    # Print results
+    # ---------------------------------
+    print(
+        "\n"
+        + "=" * 160
+    )
+
+    print(
+        "KẾT QUẢ CDM BASELINE"
+    )
+
+    print(
+        "=" * 160
+    )
+
+    print(
+        fold_results.to_string(
+            index=False,
+            formatters={
+                "alpha": (
+                    "{:.2f}".format
+                ),
+
+                "top_1_accuracy": (
+                    "{:.4%}".format
+                ),
+
+                "top_3_accuracy": (
+                    "{:.4%}".format
+                ),
+
+                "top_5_accuracy": (
+                    "{:.4%}".format
+                ),
+
+                "top_10_accuracy": (
+                    "{:.4%}".format
+                ),
+
+                "top_20_accuracy": (
+                    "{:.4%}".format
+                ),
+
+                "log_loss": (
+                    "{:.6f}".format
+                ),
+
+                "mean_true_rank": (
+                    "{:.2f}".format
+                ),
+
+                "median_true_rank": (
+                    "{:.2f}".format
+                ),
+
+                "true_rank_q25": (
+                    "{:.2f}".format
+                ),
+
+                "true_rank_q75": (
+                    "{:.2f}".format
+                ),
+
+                "true_rank_q90": (
+                    "{:.2f}".format
+                ),
+
+                "uniform_log_loss": (
+                    "{:.6f}".format
+                ),
+
+                "log_loss_gain_vs_uniform": (
+                    "{:.6f}".format
+                ),
+
+                "relative_log_loss_gain_pct": (
+                    "{:.4f}".format
+                ),
+            },
+        )
+    )
+
+    print(
+        "\nKiểm định tổng hợp:"
+    )
+
+    for key, value in (
+        significance.items()
+    ):
+        print(
+            f"{key}: {value}"
+        )
+
+    # ---------------------------------
+    # Save
+    # ---------------------------------
+    fold_results.to_csv(
+        TABLE_DIR
+        / "cdm_baseline_folds.csv",
+        index=False,
+        encoding="utf-8-sig",
+    )
+
+    predictions.to_csv(
+        TABLE_DIR
+        / "cdm_baseline_predictions.csv",
+        index=False,
+        encoding="utf-8-sig",
+    )
+
+    pd.DataFrame(
+        [significance]
+    ).to_csv(
+        TABLE_DIR
+        / "cdm_baseline_significance.csv",
+        index=False,
+        encoding="utf-8-sig",
+    )
+
+    plot_fold_results(
+        fold_results
+    )
+
+
+if __name__ == "__main__":
+    main()
