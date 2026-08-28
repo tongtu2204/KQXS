@@ -1,7 +1,14 @@
 import unittest
+import sys
+from pathlib import Path
 
 import pandas as pd
 import numpy as np
+
+
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
 
 from src.config import FINAL_TEST, TRAIN_DEVELOPMENT, VALIDATION, phase_for_date
 from src.data import load_data, validate_data
