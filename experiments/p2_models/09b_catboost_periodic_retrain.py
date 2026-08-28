@@ -28,6 +28,7 @@ Không leakage:
 
 from pathlib import Path
 import importlib.util
+import sys
 import time
 
 import numpy as np
@@ -40,6 +41,10 @@ from catboost import CatBoostClassifier
 # ============================================================
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+
+from src.config import STATEFUL_EVALUATION_FOLDS
 
 BASE_SCRIPT = (
     PROJECT_DIR
@@ -151,26 +156,10 @@ GPU_DEVICE = "0"
 
 
 # ------------------------------------------------------------
-# Test folds
+# Validation and locked final-test periods.
 # ------------------------------------------------------------
 
-FOLDS = [
-    {
-        "name": "2020-2021",
-        "test_start": 2020,
-        "test_end": 2021,
-    },
-    {
-        "name": "2022-2023",
-        "test_start": 2022,
-        "test_end": 2023,
-    },
-    {
-        "name": "2024-2026",
-        "test_start": 2024,
-        "test_end": 2026,
-    },
-]
+FOLDS = STATEFUL_EVALUATION_FOLDS
 
 
 PROBABILITY_COLUMNS = [

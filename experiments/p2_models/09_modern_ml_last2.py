@@ -1,6 +1,7 @@
 """Dự đoán trực tiếp hai chữ số cuối bằng CatBoost 100 lớp."""
 
 from pathlib import Path
+import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,6 +12,10 @@ from sklearn.metrics import log_loss
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+
+from src.config import STATIC_CATBOOST_FOLDS
 
 DATA_FILE = (
     PROJECT_DIR
@@ -37,33 +42,7 @@ RANDOM_STATE = 42
 NUMBER_OF_CLASSES = 100
 NUMBER_OF_BOOTSTRAPS = 20_000
 
-# Ba tập test không giao nhau
-FOLDS = [
-    {
-        "name": "2020-2021",
-        "train_end": 2017,
-        "validation_start": 2018,
-        "validation_end": 2019,
-        "test_start": 2020,
-        "test_end": 2021,
-    },
-    {
-        "name": "2022-2023",
-        "train_end": 2019,
-        "validation_start": 2020,
-        "validation_end": 2021,
-        "test_start": 2022,
-        "test_end": 2023,
-    },
-    {
-        "name": "2024-2026",
-        "train_end": 2021,
-        "validation_start": 2022,
-        "validation_end": 2023,
-        "test_start": 2024,
-        "test_end": 2026,
-    },
-]
+FOLDS = STATIC_CATBOOST_FOLDS
 
 
 def read_data() -> pd.DataFrame:

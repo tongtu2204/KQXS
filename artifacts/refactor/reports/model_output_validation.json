@@ -1,0 +1,77 @@
+[
+  {
+    "source": "catboost_static",
+    "rows": 1318,
+    "probability_columns": 100,
+    "maximum_probability_sum_error": 6.5503158452884236e-15,
+    "rows_by_fold": {
+      "final_test": 595,
+      "validation": 723
+    },
+    "unique_dates_by_fold": {
+      "final_test": 595,
+      "validation": 723
+    },
+    "history_end_checked": false
+  },
+  {
+    "source": "catboost_retrain",
+    "rows": 1318,
+    "probability_columns": 100,
+    "maximum_probability_sum_error": 6.217248937900877e-15,
+    "rows_by_fold": {
+      "final_test": 595,
+      "validation": 723
+    },
+    "unique_dates_by_fold": {
+      "final_test": 595,
+      "validation": 723
+    },
+    "history_end_checked": true
+  },
+  {
+    "source": "cdm",
+    "rows": 1318,
+    "probability_columns": 100,
+    "maximum_probability_sum_error": 8.548717289613705e-15,
+    "rows_by_fold": {
+      "final_test": 595,
+      "validation": 723
+    },
+    "unique_dates_by_fold": {
+      "final_test": 595,
+      "validation": 723
+    },
+    "history_end_checked": false
+  },
+  {
+    "source": "rolling_cdm",
+    "rows": 6590,
+    "probability_columns": 100,
+    "maximum_probability_sum_error": 1.1102230246251565e-14,
+    "rows_by_fold": {
+      "final_test": 2975,
+      "validation": 3615
+    },
+    "unique_dates_by_fold": {
+      "final_test": 595,
+      "validation": 723
+    },
+    "history_end_checked": false
+  },
+  {
+    "source": "bayesian_markov",
+    "rows": 1318,
+    "probability_columns": 100,
+    "maximum_probability_sum_error": 9.2148511043888e-15,
+    "rows_by_fold": {
+      "final_test": 595,
+      "validation": 723
+    },
+    "unique_dates_by_fold": {
+      "final_test": 595,
+      "validation": 723
+    },
+    "history_end_checked": false
+  }
+]

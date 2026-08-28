@@ -58,6 +58,43 @@ FINAL_TEST = Period(
 
 EVALUATION_PERIODS = (VALIDATION, FINAL_TEST)
 
+# Stateful models initialize from every draw before test_start and then update
+# only after emitting the current day's prediction.
+STATEFUL_EVALUATION_FOLDS = (
+    {
+        "name": VALIDATION.name,
+        "test_start": VALIDATION.start.year,
+        "test_end": VALIDATION.end.year,
+    },
+    {
+        "name": FINAL_TEST.name,
+        "test_start": FINAL_TEST.start.year,
+        "test_end": FINAL_TEST.end.year,
+    },
+)
+
+# The static CatBoost baseline needs an inner early-stopping interval. For the
+# final test, 2023-2024 is the only model-selection interval; 2025-2026 is
+# never used in fit or early stopping.
+STATIC_CATBOOST_FOLDS = (
+    {
+        "name": VALIDATION.name,
+        "train_end": 2020,
+        "validation_start": 2021,
+        "validation_end": 2022,
+        "test_start": 2023,
+        "test_end": 2024,
+    },
+    {
+        "name": FINAL_TEST.name,
+        "train_end": 2022,
+        "validation_start": 2023,
+        "validation_end": 2024,
+        "test_start": 2025,
+        "test_end": 2026,
+    },
+)
+
 
 def validate_protocol() -> None:
     """Fail fast if experiment periods overlap or are not chronological."""
@@ -89,4 +126,3 @@ def phase_for_date(value: pd.Timestamp) -> str:
 
 
 validate_protocol()
-
