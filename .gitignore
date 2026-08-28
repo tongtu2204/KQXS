@@ -12,6 +12,9 @@ data/processed/*
 !data/processed/.gitkeep
 
 # Generated artifacts
+
+artifacts/**/*.csv
+
 artifacts/figures/*
 !artifacts/figures/.gitkeep
 
@@ -20,6 +23,9 @@ artifacts/tables/*
 
 artifacts/models/*
 !artifacts/models/.gitkeep
+
+artifacts/tables/*.csv
+artifacts/strategies/*.csv
 
 # Jupyter
 .ipynb_checkpoints/
