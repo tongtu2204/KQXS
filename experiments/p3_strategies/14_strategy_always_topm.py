@@ -1,36 +1,74 @@
 """
-Strategy 14: Always Top-m
+Strategy 14 - Always Top-m
 
 Mỗi ngày:
-    - Xếp 100 số 00-99 theo probability giảm dần.
-    - Với mỗi m từ 10 đến 30:
-        mua toàn bộ Top-m số.
-    - Giá mỗi số: 10,000 VND.
-    - Nếu actual nằm trong Top-m:
-        payout = 800,000 VND.
-    - Nếu không:
-        payout = 0.
+    1. Xếp 100 số 00-99 theo probability giảm dần.
+    2. Chọn Top-m, m = 1,...,30.
+    3. Mua tất cả m số.
 
-Profit mỗi ngày:
-    profit = revenue - cost
+Payoff:
+    cost mỗi số = 10,000 VND
+    payout khi hit = 800,000 VND
 
-Trong đó:
+Daily:
     cost = m * 10,000
 
+    revenue =
+        800,000 nếu actual thuộc Top-m
+        0 nếu không
+
+    profit = revenue - cost
+
 Break-even hit rate:
-    q_BE(m) = m * 10,000 / 800,000
-            = m / 80
 
-Random Top-m baseline:
-    hit rate = m / 100
+    q_BE(m)
+        = m * 10,000 / 800,000
+        = m / 80
 
-Expected random ROI:
-    ((m/100)*800,000 - m*10,000)
-    / (m*10,000)
+Random Top-m:
 
-Với payoff hiện tại:
-    Random expected ROI = -20%
-    với mọi m.
+    P(hit) = m / 100
+
+Expected ROI random:
+
+    [(m/100)*800,000 - m*10,000]
+    --------------------------------
+               m*10,000
+
+    = -20%
+
+với mọi m.
+
+Models:
+    - CatBoost static
+    - CatBoost periodic retrain
+    - CDM
+    - Rolling CDM:
+          30 / 60 / 90 / 180 / 365
+    - Bayesian Markov
+
+TIE BREAK
+---------
+Strategy cần chọn số cụ thể.
+
+Do đó không dùng fractional tie-aware như experiment 13.
+
+Nếu probability bằng nhau:
+    sử dụng một seeded priority cố định.
+
+Tie-break:
+    - không dùng actual;
+    - không thay đổi theo ngày;
+    - reproducible;
+    - không tạo leakage.
+
+Output:
+    artifacts/strategies/
+        always_topm_daily.csv
+        always_topm_summary.csv
+        always_topm_by_fold.csv
+        always_topm_random_baseline.csv
+        always_topm_best_by_model.csv
 """
 
 from pathlib import Path
@@ -57,27 +95,49 @@ STRATEGY_DIR = (
     / "strategies"
 )
 
+
 COST_PER_NUMBER = 10_000
+
 PAYOUT_IF_HIT = 800_000
 
 NUMBER_OF_CLASSES = 100
 
-# Quét toàn bộ Top-1 -> Top-30
-M_VALUES = list(range(1, 31))
-
 RANDOM_STATE = 42
+
+
+# ============================================================
+# TOP-M GRID
+# ============================================================
+
+M_VALUES = list(
+    range(
+        1,
+        31,
+    )
+)
 
 
 PROBABILITY_COLUMNS = [
     f"p_{number:02d}"
-    for number in range(NUMBER_OF_CLASSES)
+    for number in range(
+        NUMBER_OF_CLASSES
+    )
 ]
 
+
+# ============================================================
+# INPUT FILES
+# ============================================================
 
 FILES = {
     "catboost": (
         TABLE_DIR
         / "modern_ml_last2_predictions.csv"
+    ),
+
+    "catboost_retrain": (
+        TABLE_DIR
+        / "catboost_retrain_predictions.csv"
     ),
 
     "cdm": (
@@ -98,21 +158,48 @@ FILES = {
 
 
 # ============================================================
+# OUTPUT FILES
+# ============================================================
+
+OUTPUT_DAILY = (
+    STRATEGY_DIR
+    / "always_topm_daily.csv"
+)
+
+OUTPUT_SUMMARY = (
+    STRATEGY_DIR
+    / "always_topm_summary.csv"
+)
+
+OUTPUT_BY_FOLD = (
+    STRATEGY_DIR
+    / "always_topm_by_fold.csv"
+)
+
+OUTPUT_RANDOM_BASELINE = (
+    STRATEGY_DIR
+    / "always_topm_random_baseline.csv"
+)
+
+OUTPUT_BEST_BY_MODEL = (
+    STRATEGY_DIR
+    / "always_topm_best_by_model.csv"
+)
+
+
+# ============================================================
 # TIE BREAK
 # ============================================================
 
-def create_tie_break_priority() -> np.ndarray:
+def create_tie_break_priority():
     """
     Tạo thứ tự ưu tiên cố định cho 100 class.
 
-    Mục đích:
-        Khi nhiều số có probability bằng nhau,
-        vẫn phải chọn ra Top-m cụ thể.
+    Khi probability bằng nhau:
+        class có priority nhỏ hơn
+        được xếp trước.
 
-    Tie-break này:
-        - cố định;
-        - không phụ thuộc actual;
-        - reproducible.
+    Priority hoàn toàn độc lập actual.
     """
 
     rng = np.random.default_rng(
@@ -142,22 +229,76 @@ TIE_BREAK_PRIORITY = (
 )
 
 
-def rank_probability_matrix(
-    probabilities: np.ndarray,
-) -> np.ndarray:
-    """
-    Xếp hạng 100 số cho từng ngày.
+# ============================================================
+# PROBABILITY NORMALIZATION
+# ============================================================
 
-    Thứ tự:
-        1. probability giảm dần;
-        2. nếu bằng nhau -> tie-break cố định.
+def normalize_probability_matrix(
+    probabilities,
+):
+
+    probabilities = np.asarray(
+        probabilities,
+        dtype=float,
+    )
+
+    probabilities = np.clip(
+        probabilities,
+        0.0,
+        None,
+    )
+
+    row_sum = (
+        probabilities
+        .sum(
+            axis=1,
+            keepdims=True,
+        )
+    )
+
+    if np.any(
+        row_sum <= 0
+    ):
+
+        raise ValueError(
+            "Có probability row có tổng <= 0."
+        )
+
+    return (
+        probabilities
+        / row_sum
+    )
+
+
+# ============================================================
+# RANKING
+# ============================================================
+
+def rank_probability_matrix(
+    probabilities,
+):
+    """
+    Ranking cụ thể cho strategy:
+
+        probability giảm dần
+        -> tie-break seeded cố định.
 
     Return:
-        shape = (n_days, 100)
-
-    Mỗi row chứa class index theo thứ tự:
-        rank 1, rank 2, ..., rank 100.
+        order[row] =
+            class ở rank 1,
+            class ở rank 2,
+            ...
     """
+
+    probabilities = (
+        normalize_probability_matrix(
+            probabilities
+        )
+    )
+
+    n_rows = (
+        probabilities.shape[0]
+    )
 
     classes = np.arange(
         NUMBER_OF_CLASSES
@@ -168,8 +309,9 @@ def rank_probability_matrix(
         dtype=int,
     )
 
+
     for row_index in range(
-        len(probabilities)
+        n_rows
     ):
 
         orders[
@@ -186,109 +328,135 @@ def rank_probability_matrix(
             )
         )
 
+
     return orders
 
 
 # ============================================================
-# LOAD DATA
+# VALIDATION
 # ============================================================
 
 def validate_probability_columns(
-    df: pd.DataFrame,
-    model_name: str,
-) -> None:
+    df,
+    model_name,
+):
 
     required_columns = [
         "date",
         "fold",
         "actual",
-    ] + PROBABILITY_COLUMNS
+        *PROBABILITY_COLUMNS,
+    ]
 
-    missing_columns = [
+    missing = [
         column
-        for column in required_columns
+        for column
+        in required_columns
         if column not in df.columns
     ]
 
-    if missing_columns:
+    if missing:
 
         raise ValueError(
-            f"\n{model_name} thiếu các cột:\n"
-            f"{missing_columns}"
+            f"{model_name} thiếu cột:\n"
+            f"{missing}"
         )
 
 
+# ============================================================
+# LOAD ONE MODEL
+# ============================================================
+
 def load_single_model(
-    model_name: str,
-    file_path: Path,
-) -> pd.DataFrame:
+    model_name,
+    file_path,
+):
 
     if not file_path.exists():
 
         raise FileNotFoundError(
-            f"\nKhông tìm thấy file:\n"
+            f"Không tìm thấy:\n"
             f"{file_path}"
         )
 
+
+    print(
+        f"Loading: "
+        f"{model_name}"
+    )
+
+
     df = pd.read_csv(
         file_path,
-        parse_dates=["date"],
+        parse_dates=[
+            "date"
+        ],
     ).copy()
+
 
     validate_probability_columns(
         df,
         model_name,
     )
 
-    # Rolling CDM chứa nhiều window
-    if model_name == "rolling_cdm":
 
-        if "window" not in df.columns:
+    # ========================================================
+    # ROLLING CDM
+    # ========================================================
+
+    if (
+        model_name
+        == "rolling_cdm"
+    ):
+
+        if (
+            "window"
+            not in df.columns
+        ):
 
             raise ValueError(
                 "rolling_cdm_predictions.csv "
                 "không có cột window."
             )
 
-        model_key = (
+
+        df[
+            "model_key"
+        ] = (
             "rolling_cdm_w"
-            + df["window"]
+            + df[
+                "window"
+            ]
             .astype(int)
             .astype(str)
         )
 
+
     else:
 
-        model_key = pd.Series(
-            model_name,
-            index=df.index,
+        df[
+            "model_key"
+        ] = (
+            model_name
         )
 
-    df = pd.concat(
-        [
-            df,
-            model_key.rename(
-                "model_key"
-            ),
-        ],
-        axis=1,
-    )
 
     return df
 
 
-def load_predictions() -> pd.DataFrame:
+# ============================================================
+# LOAD ALL
+# ============================================================
+
+def load_predictions():
 
     frames = []
+
 
     for (
         model_name,
         file_path,
     ) in FILES.items():
-
-        print(
-            f"Loading: {model_name}"
-        )
 
         frames.append(
             load_single_model(
@@ -297,11 +465,13 @@ def load_predictions() -> pd.DataFrame:
             )
         )
 
+
     predictions = pd.concat(
         frames,
         ignore_index=True,
         sort=False,
     )
+
 
     predictions = (
         predictions
@@ -316,21 +486,27 @@ def load_predictions() -> pd.DataFrame:
         )
     )
 
+
     return predictions
 
 
 # ============================================================
-# PREPARE MODEL RANKING
+# PREPARE MODEL ONCE
 # ============================================================
 
 def prepare_model_data(
-    df: pd.DataFrame,
-) -> dict:
+    df,
+):
     """
     Ranking chỉ tính một lần cho mỗi model.
 
-    Sau đó dùng lại cho m=10..30,
-    tránh sort lại 21 lần.
+    Sau đó m=1..30 dùng chung ranking đó.
+
+    Ngoài order còn tạo:
+        actual_rank
+    để xác định hit vectorized:
+
+        hit = actual_rank <= m
     """
 
     df = (
@@ -344,6 +520,7 @@ def prepare_model_data(
         .copy()
     )
 
+
     probabilities = (
         df[
             PROBABILITY_COLUMNS
@@ -352,6 +529,14 @@ def prepare_model_data(
             dtype=float
         )
     )
+
+
+    probabilities = (
+        normalize_probability_matrix(
+            probabilities
+        )
+    )
+
 
     actual = (
         df[
@@ -362,11 +547,64 @@ def prepare_model_data(
         )
     )
 
+
+    # ========================================================
+    # ORDER
+    # ========================================================
+
     order = (
         rank_probability_matrix(
             probabilities
         )
     )
+
+
+    # ========================================================
+    # INVERSE RANK
+    #
+    # rank_matrix[row, class] = rank 1..100
+    # ========================================================
+
+    n_rows = len(
+        df
+    )
+
+
+    inverse_rank = np.empty_like(
+        order
+    )
+
+
+    row_index = np.arange(
+        n_rows
+    )[
+        :,
+        None,
+    ]
+
+
+    inverse_rank[
+        row_index,
+        order,
+    ] = np.arange(
+        1,
+        NUMBER_OF_CLASSES + 1,
+    )
+
+
+    actual_rank = (
+        inverse_rank[
+            np.arange(
+                n_rows
+            ),
+            actual,
+        ]
+    )
+
+
+    # ========================================================
+    # CUMULATIVE TOP-M PROBABILITY
+    # ========================================================
 
     sorted_probabilities = (
         np.take_along_axis(
@@ -376,10 +614,7 @@ def prepare_model_data(
         )
     )
 
-    # cumulative probability:
-    # column 0 = q_1
-    # column 9 = q_10
-    # column 19 = q_20
+
     cumulative_probability = (
         np.cumsum(
             sorted_probabilities,
@@ -387,10 +622,28 @@ def prepare_model_data(
         )
     )
 
+
     return {
-        "df": df,
-        "actual": actual,
-        "order": order,
+        "df": (
+            df
+        ),
+
+        "probabilities": (
+            probabilities
+        ),
+
+        "actual": (
+            actual
+        ),
+
+        "order": (
+            order
+        ),
+
+        "actual_rank": (
+            actual_rank
+        ),
+
         "cumulative_probability": (
             cumulative_probability
         ),
@@ -402,8 +655,14 @@ def prepare_model_data(
 # ============================================================
 
 def calculate_max_drawdown(
-    cumulative_profit: np.ndarray,
-) -> float:
+    cumulative_profit,
+):
+
+    cumulative_profit = np.asarray(
+        cumulative_profit,
+        dtype=float,
+    )
+
 
     if len(
         cumulative_profit
@@ -411,17 +670,19 @@ def calculate_max_drawdown(
 
         return 0.0
 
+
     equity = np.concatenate(
         [
             np.array(
-                [0.0]
+                [
+                    0.0
+                ]
             ),
 
-            cumulative_profit.astype(
-                float
-            ),
+            cumulative_profit,
         ]
     )
+
 
     running_max = (
         np.maximum.accumulate(
@@ -429,10 +690,12 @@ def calculate_max_drawdown(
         )
     )
 
+
     drawdown = (
         running_max
         - equity
     )
+
 
     return float(
         drawdown.max()
@@ -440,24 +703,38 @@ def calculate_max_drawdown(
 
 
 # ============================================================
-# RUN ONE M
+# RUN ONE MODEL / M
 # ============================================================
 
 def run_strategy(
-    prepared: dict,
-    model_key: str,
-    m: int,
-) -> pd.DataFrame:
+    prepared,
+    model_key,
+    m,
+):
 
-    df = prepared["df"]
+    df = (
+        prepared[
+            "df"
+        ]
+    )
 
-    actual = prepared[
-        "actual"
-    ]
+    actual = (
+        prepared[
+            "actual"
+        ]
+    )
 
-    order = prepared[
-        "order"
-    ]
+    order = (
+        prepared[
+            "order"
+        ]
+    )
+
+    actual_rank = (
+        prepared[
+            "actual_rank"
+        ]
+    )
 
     cumulative_probability = (
         prepared[
@@ -465,49 +742,63 @@ def run_strategy(
         ]
     )
 
-    # Top-m số
+
+    # ========================================================
+    # TOP-M
+    # ========================================================
+
     top_m = (
         order[
-            :, :m
+            :,
+            :m,
         ]
     )
 
-    # Tổng probability của Top-m
+
+    # ========================================================
+    # MODEL CONFIDENCE
+    #
+    # q_m = sum probability của Top-m
+    # ========================================================
+
     q_m = (
         cumulative_probability[
-            :, m - 1
+            :,
+            m - 1,
         ]
     )
 
-    # Actual có nằm trong Top-m không?
-    hit = np.array(
-        [
-            int(
-                actual_value
-                in selected_numbers
-            )
 
-            for (
-                actual_value,
-                selected_numbers,
-            ) in zip(
-                actual,
-                top_m,
-            )
-        ],
-        dtype=int,
+    # ========================================================
+    # HIT
+    # ========================================================
+
+    hit = (
+        actual_rank
+        <= m
+    ).astype(
+        np.int8
     )
+
+
+    # ========================================================
+    # ECONOMICS
+    # ========================================================
 
     daily_cost = (
         m
         * COST_PER_NUMBER
     )
 
+
     cost = np.full(
-        len(df),
+        len(
+            df
+        ),
         daily_cost,
         dtype=np.int64,
     )
+
 
     revenue = (
         hit.astype(
@@ -516,10 +807,12 @@ def run_strategy(
         * PAYOUT_IF_HIT
     )
 
+
     profit = (
         revenue
         - cost
     )
+
 
     cumulative_profit = (
         np.cumsum(
@@ -527,24 +820,38 @@ def run_strategy(
         )
     )
 
+
+    # ========================================================
+    # SELECTED NUMBERS
+    #
+    # Giữ để audit concrete strategy.
+    # ========================================================
+
     selected_numbers = [
         ",".join(
             f"{number:02d}"
-            for number in selected
+            for number
+            in selected
         )
 
-        for selected in top_m
+        for selected
+        in top_m
     ]
+
 
     output = pd.DataFrame(
         {
             "date": (
-                df["date"]
+                df[
+                    "date"
+                ]
                 .to_numpy()
             ),
 
             "fold": (
-                df["fold"]
+                df[
+                    "fold"
+                ]
                 .to_numpy()
             ),
 
@@ -558,6 +865,10 @@ def run_strategy(
 
             "actual": (
                 actual
+            ),
+
+            "actual_rank": (
+                actual_rank
             ),
 
             "q_m": (
@@ -590,48 +901,58 @@ def run_strategy(
         }
     )
 
+
     return output
 
 
 # ============================================================
-# SUMMARY
+# SUMMARY ONE CONFIG
 # ============================================================
 
 def summarize_strategy(
-    daily: pd.DataFrame,
-) -> dict:
+    daily,
+):
 
     model = (
         daily[
             "model"
-        ].iloc[0]
+        ]
+        .iloc[0]
     )
+
 
     m = int(
         daily[
             "m"
-        ].iloc[0]
+        ]
+        .iloc[0]
     )
+
 
     n_days = len(
         daily
     )
 
+
     number_hits = int(
         daily[
             "hit"
-        ].sum()
+        ]
+        .sum()
     )
+
 
     hit_rate = (
         number_hits
         / n_days
     )
 
+
     random_hit_rate = (
         m
         / NUMBER_OF_CLASSES
     )
+
 
     break_even_hit_rate = (
         m
@@ -639,35 +960,43 @@ def summarize_strategy(
         / PAYOUT_IF_HIT
     )
 
+
     total_cost = float(
         daily[
             "cost"
-        ].sum()
+        ]
+        .sum()
     )
+
 
     total_revenue = float(
         daily[
             "revenue"
-        ].sum()
+        ]
+        .sum()
     )
 
-    total_profit = float(
-        daily[
-            "profit"
-        ].sum()
+
+    total_profit = (
+        total_revenue
+        - total_cost
     )
+
 
     roi = (
         total_profit
         / total_cost
     )
 
+
     random_expected_profit_per_day = (
         random_hit_rate
         * PAYOUT_IF_HIT
+
         - m
         * COST_PER_NUMBER
     )
+
 
     random_expected_roi = (
         random_expected_profit_per_day
@@ -677,11 +1006,14 @@ def summarize_strategy(
         )
     )
 
+
     mean_q_m = float(
         daily[
             "q_m"
-        ].mean()
+        ]
+        .mean()
     )
+
 
     return {
         "model": (
@@ -772,10 +1104,11 @@ def summarize_strategy(
 # ============================================================
 
 def build_fold_summary(
-    daily_results: pd.DataFrame,
-) -> pd.DataFrame:
+    daily_results,
+):
 
     records = []
+
 
     grouped = (
         daily_results
@@ -784,9 +1117,11 @@ def build_fold_summary(
                 "model",
                 "m",
                 "fold",
-            ]
+            ],
+            sort=False,
         )
     )
+
 
     for (
         model,
@@ -798,49 +1133,70 @@ def build_fold_summary(
             subset
         )
 
+
         number_hits = int(
             subset[
                 "hit"
-            ].sum()
+            ]
+            .sum()
         )
+
 
         hit_rate = (
             number_hits
             / n_days
         )
 
-        total_cost = float(
-            subset[
-                "cost"
-            ].sum()
-        )
-
-        total_revenue = float(
-            subset[
-                "revenue"
-            ].sum()
-        )
-
-        total_profit = (
-            total_revenue
-            - total_cost
-        )
-
-        roi = (
-            total_profit
-            / total_cost
-        )
 
         random_hit_rate = (
             m
             / NUMBER_OF_CLASSES
         )
 
+
         break_even_hit_rate = (
             m
             * COST_PER_NUMBER
             / PAYOUT_IF_HIT
         )
+
+
+        total_cost = float(
+            subset[
+                "cost"
+            ]
+            .sum()
+        )
+
+
+        total_revenue = float(
+            subset[
+                "revenue"
+            ]
+            .sum()
+        )
+
+
+        total_profit = (
+            total_revenue
+            - total_cost
+        )
+
+
+        roi = (
+            total_profit
+            / total_cost
+        )
+
+
+        cumulative_profit = (
+            subset[
+                "profit"
+            ]
+            .cumsum()
+            .to_numpy()
+        )
+
 
         records.append(
             {
@@ -849,7 +1205,9 @@ def build_fold_summary(
                 ),
 
                 "m": (
-                    int(m)
+                    int(
+                        m
+                    )
                 ),
 
                 "fold": (
@@ -876,6 +1234,11 @@ def build_fold_summary(
                     break_even_hit_rate
                 ),
 
+                "gap_to_break_even": (
+                    hit_rate
+                    - break_even_hit_rate
+                ),
+
                 "total_cost": (
                     total_cost
                 ),
@@ -891,8 +1254,15 @@ def build_fold_summary(
                 "roi": (
                     roi
                 ),
+
+                "max_drawdown": (
+                    calculate_max_drawdown(
+                        cumulative_profit
+                    )
+                ),
             }
         )
+
 
     return pd.DataFrame(
         records
@@ -903,9 +1273,10 @@ def build_fold_summary(
 # RANDOM BASELINE
 # ============================================================
 
-def build_random_baseline() -> pd.DataFrame:
+def build_random_baseline():
 
     records = []
+
 
     for m in M_VALUES:
 
@@ -914,31 +1285,37 @@ def build_random_baseline() -> pd.DataFrame:
             / NUMBER_OF_CLASSES
         )
 
+
         break_even_hit_rate = (
             m
             * COST_PER_NUMBER
             / PAYOUT_IF_HIT
         )
 
-        daily_cost = (
+
+        expected_cost = (
             m
             * COST_PER_NUMBER
         )
+
 
         expected_revenue = (
             random_hit_rate
             * PAYOUT_IF_HIT
         )
 
+
         expected_profit = (
             expected_revenue
-            - daily_cost
+            - expected_cost
         )
+
 
         expected_roi = (
             expected_profit
-            / daily_cost
+            / expected_cost
         )
+
 
         records.append(
             {
@@ -955,7 +1332,7 @@ def build_random_baseline() -> pd.DataFrame:
                 ),
 
                 "expected_cost_per_day": (
-                    daily_cost
+                    expected_cost
                 ),
 
                 "expected_revenue_per_day": (
@@ -972,34 +1349,51 @@ def build_random_baseline() -> pd.DataFrame:
             }
         )
 
+
     return pd.DataFrame(
         records
     )
 
 
 # ============================================================
-# BEST CONFIG PER MODEL
+# BEST PER MODEL
 # ============================================================
 
-def get_best_configuration_per_model(
-    summary: pd.DataFrame,
-) -> pd.DataFrame:
+def build_best_by_model(
+    summary,
+):
+    """
+    Best observed m theo ROI.
 
-    idx = (
-        summary
-        .groupby(
-            "model"
-        )[
-            "roi"
-        ]
-        .idxmax()
-    )
+    Đây chỉ là descriptive / post-hoc.
+    Không phải OOS validated strategy.
+    """
 
     best = (
         summary
-        .loc[
-            idx
-        ]
+        .sort_values(
+            [
+                "model",
+                "roi",
+                "total_profit",
+            ],
+            ascending=[
+                True,
+                False,
+                False,
+            ],
+        )
+        .groupby(
+            "model",
+            as_index=False,
+            sort=False,
+        )
+        .first()
+    )
+
+
+    return (
+        best
         .sort_values(
             "roi",
             ascending=False,
@@ -1009,16 +1403,14 @@ def get_best_configuration_per_model(
         )
     )
 
-    return best
-
 
 # ============================================================
 # PRINT
 # ============================================================
 
-def print_full_summary(
-    summary: pd.DataFrame,
-) -> None:
+def print_best(
+    best,
+):
 
     columns = [
         "model",
@@ -1028,112 +1420,28 @@ def print_full_summary(
         "hit_rate",
         "random_hit_rate",
         "break_even_hit_rate",
-        "mean_q_m",
+        "gap_to_break_even",
         "total_profit",
         "roi",
         "random_expected_roi",
         "roi_gain_vs_random",
-    ]
-
-    printable = (
-        summary[
-            columns
-        ]
-        .sort_values(
-            [
-                "model",
-                "m",
-            ]
-        )
-    )
-
-    print(
-        "\n"
-        + "=" * 185
-    )
-
-    print(
-        "STRATEGY 14 - ALWAYS TOP-m"
-    )
-
-    print(
-        "m = 10 ... 30"
-    )
-
-    print(
-        "=" * 185
-    )
-
-    print(
-        printable.to_string(
-            index=False,
-            formatters={
-                "hit_rate": (
-                    "{:.4%}".format
-                ),
-
-                "random_hit_rate": (
-                    "{:.2%}".format
-                ),
-
-                "break_even_hit_rate": (
-                    "{:.2%}".format
-                ),
-
-                "mean_q_m": (
-                    "{:.4%}".format
-                ),
-
-                "total_profit": (
-                    "{:,.0f}".format
-                ),
-
-                "roi": (
-                    "{:.2%}".format
-                ),
-
-                "random_expected_roi": (
-                    "{:.2%}".format
-                ),
-
-                "roi_gain_vs_random": (
-                    "{:+.2%}".format
-                ),
-            },
-        )
-    )
-
-
-def print_best_summary(
-    best: pd.DataFrame,
-) -> None:
-
-    columns = [
-        "model",
-        "m",
-        "number_hits",
-        "hit_rate",
-        "random_hit_rate",
-        "break_even_hit_rate",
-        "gap_to_break_even",
-        "total_profit",
-        "roi",
-        "roi_gain_vs_random",
         "max_drawdown",
     ]
 
+
     print(
         "\n"
-        + "=" * 175
+        + "=" * 190
     )
 
     print(
-        "BEST m THEO TỪNG MODEL"
+        "ALWAYS TOP-M - BEST OBSERVED CONFIGURATION BY MODEL"
     )
 
     print(
-        "=" * 175
+        "=" * 190
     )
+
 
     print(
         best[
@@ -1141,21 +1449,22 @@ def print_best_summary(
         ]
         .to_string(
             index=False,
+
             formatters={
                 "hit_rate": (
                     "{:.4%}".format
                 ),
 
                 "random_hit_rate": (
-                    "{:.2%}".format
+                    "{:.4%}".format
                 ),
 
                 "break_even_hit_rate": (
-                    "{:.2%}".format
+                    "{:.4%}".format
                 ),
 
                 "gap_to_break_even": (
-                    "{:+.2%}".format
+                    "{:+.4%}".format
                 ),
 
                 "total_profit": (
@@ -1163,7 +1472,11 @@ def print_best_summary(
                 ),
 
                 "roi": (
-                    "{:.2%}".format
+                    "{:+.2%}".format
+                ),
+
+                "random_expected_roi": (
+                    "{:+.2%}".format
                 ),
 
                 "roi_gain_vs_random": (
@@ -1189,56 +1502,92 @@ def main():
         exist_ok=True,
     )
 
+
+    # ========================================================
+    # LOAD
+    # ========================================================
+
     predictions = (
         load_predictions()
     )
 
-    print(
-        f"\nPrediction rows: "
-        f"{len(predictions):,}"
+
+    model_keys = (
+        predictions[
+            "model_key"
+        ]
+        .unique()
     )
 
+
     print(
-        f"M range: "
-        f"{M_VALUES[0]} -> {M_VALUES[-1]}"
+        "\nModels:"
     )
+
+    for model in model_keys:
+
+        print(
+            f"  - {model}"
+        )
+
+
+    print(
+        f"\nM grid: "
+        f"{min(M_VALUES)} -> "
+        f"{max(M_VALUES)}"
+    )
+
 
     print(
         f"Cost per number: "
         f"{COST_PER_NUMBER:,}"
     )
 
+
     print(
         f"Payout if hit: "
         f"{PAYOUT_IF_HIT:,}"
     )
 
+
+    # ========================================================
+    # RUN
+    # ========================================================
+
     daily_frames = []
 
     summary_records = []
 
-    model_groups = (
-        predictions
-        .groupby(
-            "model_key"
-        )
-    )
 
     for (
         model_key,
-        model_df,
-    ) in model_groups:
+        subset,
+    ) in predictions.groupby(
+        "model_key",
+        sort=False,
+    ):
 
         print(
-            f"\nRunning model: "
+            "\n"
+            + "=" * 90
+        )
+
+        print(
+            f"MODEL: "
             f"{model_key}"
         )
 
+        print(
+            "=" * 90
+        )
+
+
         prepared = (
             prepare_model_data(
-                model_df
+                subset
             )
         )
+
 
         for m in M_VALUES:
 
@@ -1250,134 +1599,139 @@ def main():
                 )
             )
 
-            daily_frames.append(
-                daily
-            )
 
-            summary_records.append(
+            summary = (
                 summarize_strategy(
                     daily
                 )
             )
 
-    daily_results = pd.concat(
-        daily_frames,
-        ignore_index=True,
+
+            daily_frames.append(
+                daily
+            )
+
+
+            summary_records.append(
+                summary
+            )
+
+
+        print(
+            f"Completed m="
+            f"{min(M_VALUES)}..."
+            f"{max(M_VALUES)}"
+        )
+
+
+    # ========================================================
+    # COMBINE
+    # ========================================================
+
+    daily_results = (
+        pd.concat(
+            daily_frames,
+            ignore_index=True,
+        )
     )
 
-    summary = pd.DataFrame(
-        summary_records
+
+    summary = (
+        pd.DataFrame(
+            summary_records
+        )
     )
 
-    by_fold = (
+
+    fold_summary = (
         build_fold_summary(
             daily_results
         )
     )
 
+
     random_baseline = (
         build_random_baseline()
     )
 
+
     best_by_model = (
-        get_best_configuration_per_model(
+        build_best_by_model(
             summary
         )
     )
+
 
     # ========================================================
     # PRINT
     # ========================================================
 
-    print_full_summary(
-        summary
-    )
-
-    print_best_summary(
+    print_best(
         best_by_model
     )
+
 
     # ========================================================
     # SAVE
     # ========================================================
 
-    daily_path = (
-        STRATEGY_DIR
-        / "always_topm_daily.csv"
-    )
-
-    summary_path = (
-        STRATEGY_DIR
-        / "always_topm_summary.csv"
-    )
-
-    fold_path = (
-        STRATEGY_DIR
-        / "always_topm_by_fold.csv"
-    )
-
-    random_path = (
-        STRATEGY_DIR
-        / "always_topm_random_baseline.csv"
-    )
-
-    best_path = (
-        STRATEGY_DIR
-        / "always_topm_best_by_model.csv"
-    )
-
     daily_results.to_csv(
-        daily_path,
+        OUTPUT_DAILY,
         index=False,
         encoding="utf-8-sig",
     )
+
 
     summary.to_csv(
-        summary_path,
+        OUTPUT_SUMMARY,
         index=False,
         encoding="utf-8-sig",
     )
 
-    by_fold.to_csv(
-        fold_path,
+
+    fold_summary.to_csv(
+        OUTPUT_BY_FOLD,
         index=False,
         encoding="utf-8-sig",
     )
+
 
     random_baseline.to_csv(
-        random_path,
+        OUTPUT_RANDOM_BASELINE,
         index=False,
         encoding="utf-8-sig",
     )
 
+
     best_by_model.to_csv(
-        best_path,
+        OUTPUT_BEST_BY_MODEL,
         index=False,
         encoding="utf-8-sig",
     )
+
 
     print(
         "\nĐã lưu:"
     )
 
     print(
-        daily_path
+        OUTPUT_DAILY
     )
 
     print(
-        summary_path
+        OUTPUT_SUMMARY
     )
 
     print(
-        fold_path
+        OUTPUT_BY_FOLD
     )
 
     print(
-        random_path
+        OUTPUT_RANDOM_BASELINE
     )
 
     print(
-        best_path
+        OUTPUT_BEST_BY_MODEL
     )
 
 

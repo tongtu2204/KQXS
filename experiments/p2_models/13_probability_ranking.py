@@ -1,19 +1,67 @@
-"""Tổng hợp và so sánh probability ranking của các mô hình 00-99.
+"""
+13 - PROBABILITY RANKING
 
-Models:
-    - CatBoost 100-class
-    - CDM full-history
-    - Rolling CDM
-    - Bayesian Markov
-    - Uniform baseline
+So sánh probability ranking của các mô hình 00-99.
 
-Mục tiêu:
-    1. So sánh Top-k accuracy.
-    2. Phân tích rank của kết quả thật.
-    3. So sánh empirical rank CDF với Uniform:
-           P(R <= k) = k / 100
-    4. Tính lift so với random.
-    5. Chuẩn bị output cho các strategy 14-16.
+Models
+------
+- Uniform
+- CatBoost static
+- CatBoost periodic retrain
+- CDM
+- Rolling CDM:
+      30 / 60 / 90 / 180 / 365
+- Bayesian Markov
+
+Mục tiêu
+--------
+1. So sánh Log Loss.
+2. So sánh mean probability của actual.
+3. Đánh giá ranking của actual.
+4. Top-k theo tie-aware fractional scoring.
+5. So sánh với Uniform baseline.
+6. Chuẩn bị model probability cho strategy.
+
+TIE-AWARE
+---------
+Nếu probability của actual bị tie với nhiều class:
+
+    n_greater
+        = số class có probability > actual probability
+
+    n_equal
+        = số class có probability = actual probability
+          bao gồm actual.
+
+Average rank:
+
+    rank =
+        1
+        + n_greater
+        + (n_equal - 1) / 2
+
+Ví dụ Uniform:
+
+    n_greater = 0
+    n_equal = 100
+
+=> average rank = 50.5
+
+Fractional Top-k:
+
+Nếu một tie group cắt qua ngưỡng k:
+
+    score =
+        phần xác suất actual được nằm trong Top-k
+        nếu tie được phá ngẫu nhiên.
+
+Uniform vì vậy cho chính xác:
+
+    Top-1  = 1%
+    Top-5  = 5%
+    Top-10 = 10%
+
+Không còn phụ thuộc vào thứ tự argsort.
 """
 
 from pathlib import Path
@@ -41,11 +89,18 @@ FIGURE_DIR = (
     / "figures"
 )
 
+
 NUMBER_OF_CLASSES = 100
 
-UNIFORM_LOG_LOSS = np.log(
-    NUMBER_OF_CLASSES
+EPSILON = 1e-15
+
+
+UNIFORM_LOG_LOSS = (
+    np.log(
+        NUMBER_OF_CLASSES
+    )
 )
+
 
 TOP_K_VALUES = [
     1,
@@ -55,10 +110,25 @@ TOP_K_VALUES = [
     20,
 ]
 
+
+PROBABILITY_COLUMNS = [
+    f"p_{number:02d}"
+    for number
+    in range(
+        NUMBER_OF_CLASSES
+    )
+]
+
+
 FILES = {
     "catboost": (
         TABLE_DIR
         / "modern_ml_last2_predictions.csv"
+    ),
+
+    "catboost_retrain": (
+        TABLE_DIR
+        / "catboost_retrain_predictions.csv"
     ),
 
     "cdm": (
@@ -79,122 +149,175 @@ FILES = {
 
 
 # ============================================================
-# LOAD
+# OUTPUT
 # ============================================================
 
+OUTPUT_DAILY = (
+    TABLE_DIR
+    / "probability_ranking_daily.csv"
+)
+
+OUTPUT_SUMMARY = (
+    TABLE_DIR
+    / "probability_ranking_summary.csv"
+)
+
+OUTPUT_FOLD_SUMMARY = (
+    TABLE_DIR
+    / "probability_ranking_by_fold.csv"
+)
+
+OUTPUT_RANK_CDF = (
+    TABLE_DIR
+    / "probability_rank_cdf.csv"
+)
+
+OUTPUT_SELECTED_RANKS = (
+    TABLE_DIR
+    / "probability_selected_ranks.csv"
+)
+
+OUTPUT_STRATEGY_CANDIDATES = (
+    TABLE_DIR
+    / "probability_strategy_candidates.csv"
+)
+
+
+# ============================================================
+# VALIDATE
+# ============================================================
 
 def validate_file(
     file_path: Path,
-) -> None:
-    """Kiểm tra file input có tồn tại."""
+):
 
     if not file_path.exists():
+
         raise FileNotFoundError(
             f"Không tìm thấy file:\n"
-            f"{file_path}\n\n"
-            "Hãy chạy các experiment 09-12 trước."
+            f"{file_path}"
         )
 
 
 def validate_columns(
     df: pd.DataFrame,
     model_name: str,
-) -> None:
-    """Kiểm tra các cột bắt buộc."""
+):
 
-    required_columns = [
+    required = [
         "date",
         "fold",
         "actual",
-        "actual_probability",
-        "actual_rank",
-        "model_loss",
-        "uniform_loss",
-        "improvement",
+        *PROBABILITY_COLUMNS,
     ]
 
     missing = [
         column
-        for column in required_columns
+        for column
+        in required
         if column not in df.columns
     ]
 
     if missing:
+
         raise ValueError(
-            f"{model_name} thiếu các cột: "
+            f"{model_name} thiếu cột:\n"
             f"{missing}"
         )
 
 
+# ============================================================
+# LOAD MODEL
+# ============================================================
+
 def load_single_model(
     model_name: str,
     file_path: Path,
-) -> pd.DataFrame:
-    """Đọc một probability prediction file."""
+):
 
     validate_file(
         file_path
     )
 
+    print(
+        f"Loading: "
+        f"{model_name}"
+    )
+
     df = pd.read_csv(
         file_path,
-        parse_dates=["date"],
-    )
+        parse_dates=[
+            "date"
+        ],
+    ).copy()
+
 
     validate_columns(
         df,
         model_name,
     )
 
-    df = df.copy()
 
-    df["source_model"] = (
+    # ========================================================
+    # MODEL KEY
+    # ========================================================
+
+    if (
         model_name
-    )
+        == "rolling_cdm"
+    ):
+
+        if (
+            "window"
+            not in df.columns
+        ):
+
+            raise ValueError(
+                "rolling_cdm_predictions.csv "
+                "thiếu cột window."
+            )
+
+
+        df[
+            "model_key"
+        ] = (
+            "rolling_cdm_w"
+            + df[
+                "window"
+            ]
+            .astype(int)
+            .astype(str)
+        )
+
+    else:
+
+        df[
+            "model_key"
+        ] = (
+            model_name
+        )
+
 
     return df
 
 
-def load_predictions() -> pd.DataFrame:
-    """Đọc toàn bộ prediction output từ experiment 09-12."""
+def load_predictions():
 
     frames = []
 
-    for model_name, file_path in FILES.items():
 
-        df = load_single_model(
-            model_name,
-            file_path,
-        )
-
-        # --------------------------------
-        # Standard model key
-        # --------------------------------
-
-        if model_name == "rolling_cdm":
-
-            if "window" not in df.columns:
-                raise ValueError(
-                    "rolling_cdm_predictions.csv "
-                    "không có cột window."
-                )
-
-            df["model_key"] = (
-                "rolling_cdm_w"
-                + df["window"]
-                .astype(int)
-                .astype(str)
-            )
-
-        else:
-
-            df["model_key"] = (
-                model_name
-            )
+    for (
+        model_name,
+        file_path,
+    ) in FILES.items():
 
         frames.append(
-            df
+            load_single_model(
+                model_name,
+                file_path,
+            )
         )
+
 
     predictions = pd.concat(
         frames,
@@ -202,59 +325,535 @@ def load_predictions() -> pd.DataFrame:
         sort=False,
     )
 
+
     predictions = (
-        predictions.sort_values(
+        predictions
+        .sort_values(
             [
                 "model_key",
                 "date",
             ]
         )
-        .reset_index(drop=True)
+        .reset_index(
+            drop=True
+        )
     )
+
 
     return predictions
 
 
 # ============================================================
-# BASIC METRICS
+# NORMALIZE PROBABILITY
 # ============================================================
 
+def normalize_probability_matrix(
+    probabilities,
+):
 
-def top_k_accuracy_from_rank(
-    ranks: np.ndarray,
-    k: int,
-) -> float:
-    """Top-k accuracy từ actual rank."""
+    probabilities = np.asarray(
+        probabilities,
+        dtype=float,
+    )
 
-    return float(
-        np.mean(
-            ranks <= k
+
+    probabilities = np.clip(
+        probabilities,
+        0.0,
+        None,
+    )
+
+
+    row_sum = (
+        probabilities
+        .sum(
+            axis=1,
+            keepdims=True,
         )
     )
 
 
-def calculate_summary(
-    df: pd.DataFrame,
-    model_key: str,
-) -> dict:
-    """Tính summary cho một model."""
+    if np.any(
+        row_sum <= 0
+    ):
 
-    ranks = (
-        df["actual_rank"]
-        .to_numpy()
+        raise ValueError(
+            "Có probability row tổng <= 0."
+        )
+
+
+    return (
+        probabilities
+        / row_sum
     )
 
-    record = {
-        "model": model_key,
 
-        "n_test": len(
+# ============================================================
+# TIE-AWARE RANKING
+# ============================================================
+
+def tie_aware_metrics(
+    probabilities,
+    actual,
+):
+    """
+    Return:
+        actual_probability
+        average_rank
+        n_greater
+        n_equal
+        top-k fractional scores
+    """
+
+    probabilities = (
+        normalize_probability_matrix(
+            probabilities
+        )
+    )
+
+    actual = np.asarray(
+        actual,
+        dtype=int,
+    )
+
+
+    n_rows = len(
+        actual
+    )
+
+
+    actual_probability = (
+        probabilities[
+            np.arange(
+                n_rows
+            ),
+            actual,
+        ]
+    )
+
+
+    # ========================================================
+    # COMPARE WITH ACTUAL PROBABILITY
+    # ========================================================
+
+    actual_probability_column = (
+        actual_probability[
+            :, None
+        ]
+    )
+
+
+    greater_mask = (
+        probabilities
+        > (
+            actual_probability_column
+            + EPSILON
+        )
+    )
+
+
+    equal_mask = (
+        np.isclose(
+            probabilities,
+            actual_probability_column,
+            rtol=1e-12,
+            atol=1e-15,
+        )
+    )
+
+
+    n_greater = (
+        greater_mask
+        .sum(
+            axis=1
+        )
+        .astype(int)
+    )
+
+
+    n_equal = (
+        equal_mask
+        .sum(
+            axis=1
+        )
+        .astype(int)
+    )
+
+
+    # safety
+    n_equal = np.maximum(
+        n_equal,
+        1,
+    )
+
+
+    # ========================================================
+    # AVERAGE RANK
+    # ========================================================
+
+    average_rank = (
+        1.0
+        + n_greater
+        + (
+            n_equal
+            - 1
+        )
+        / 2.0
+    )
+
+
+    # ========================================================
+    # FRACTIONAL TOP-K
+    # ========================================================
+
+    top_k_scores = {}
+
+
+    for k in TOP_K_VALUES:
+
+        scores = np.zeros(
+            n_rows,
+            dtype=float,
+        )
+
+
+        # -----------------------------------------------
+        # actual tie group entirely inside Top-k
+        # -----------------------------------------------
+
+        completely_inside = (
+            (
+                n_greater
+                + n_equal
+            )
+            <= k
+        )
+
+
+        scores[
+            completely_inside
+        ] = 1.0
+
+
+        # -----------------------------------------------
+        # tie group intersects boundary
+        # -----------------------------------------------
+
+        crossing = (
+            (n_greater < k)
+            & (
+                (
+                    n_greater
+                    + n_equal
+                )
+                > k
+            )
+        )
+
+
+        scores[
+            crossing
+        ] = (
+            (
+                k
+                - n_greater[
+                    crossing
+                ]
+            )
+            / n_equal[
+                crossing
+            ]
+        )
+
+
+        # -----------------------------------------------
+        # if n_greater >= k:
+        # score remains 0
+        # -----------------------------------------------
+
+        top_k_scores[
+            k
+        ] = scores
+
+
+    return (
+        actual_probability,
+        average_rank,
+        n_greater,
+        n_equal,
+        top_k_scores,
+    )
+
+
+# ============================================================
+# LOG LOSS
+# ============================================================
+
+def row_log_loss(
+    actual_probability,
+):
+
+    actual_probability = (
+        np.clip(
+            actual_probability,
+            EPSILON,
+            1.0,
+        )
+    )
+
+
+    return (
+        -np.log(
+            actual_probability
+        )
+    )
+
+
+# ============================================================
+# PROCESS MODEL
+# ============================================================
+
+def process_model(
+    model_key,
+    df,
+):
+
+    df = (
+        df
+        .sort_values(
+            "date"
+        )
+        .reset_index(
+            drop=True
+        )
+        .copy()
+    )
+
+
+    probabilities = (
+        df[
+            PROBABILITY_COLUMNS
+        ]
+        .to_numpy(
+            dtype=float
+        )
+    )
+
+
+    probabilities = (
+        normalize_probability_matrix(
+            probabilities
+        )
+    )
+
+
+    actual = (
+        df[
+            "actual"
+        ]
+        .to_numpy(
+            dtype=int
+        )
+    )
+
+
+    (
+        actual_probability,
+        average_rank,
+        n_greater,
+        n_equal,
+        top_k_scores,
+    ) = (
+        tie_aware_metrics(
+            probabilities,
+            actual,
+        )
+    )
+
+
+    model_loss = (
+        row_log_loss(
+            actual_probability
+        )
+    )
+
+
+    uniform_loss = np.full(
+        len(
             df
+        ),
+        UNIFORM_LOG_LOSS,
+        dtype=float,
+    )
+
+
+    improvement = (
+        uniform_loss
+        - model_loss
+    )
+
+
+    # ========================================================
+    # DAILY OUTPUT
+    # ========================================================
+
+    output = pd.DataFrame(
+        {
+            "date": (
+                df[
+                    "date"
+                ]
+                .to_numpy()
+            ),
+
+            "fold": (
+                df[
+                    "fold"
+                ]
+                .to_numpy()
+            ),
+
+            "model": (
+                model_key
+            ),
+
+            "actual": (
+                actual
+            ),
+
+            "actual_probability": (
+                actual_probability
+            ),
+
+            "actual_rank": (
+                average_rank
+            ),
+
+            "n_greater": (
+                n_greater
+            ),
+
+            "n_equal": (
+                n_equal
+            ),
+
+            "model_loss": (
+                model_loss
+            ),
+
+            "uniform_loss": (
+                uniform_loss
+            ),
+
+            "improvement": (
+                improvement
+            ),
+        }
+    )
+
+
+    for k in TOP_K_VALUES:
+
+        output[
+            f"top_{k}_score"
+        ] = (
+            top_k_scores[
+                k
+            ]
+        )
+
+
+    return output
+
+
+# ============================================================
+# BUILD DAILY
+# ============================================================
+
+def build_daily_ranking(
+    predictions,
+):
+
+    frames = []
+
+
+    for (
+        model_key,
+        subset,
+    ) in predictions.groupby(
+        "model_key",
+        sort=False,
+    ):
+
+        print(
+            f"Ranking: "
+            f"{model_key}"
+        )
+
+
+        frames.append(
+            process_model(
+                model_key,
+                subset,
+            )
+        )
+
+
+    daily = pd.concat(
+        frames,
+        ignore_index=True,
+    )
+
+
+    return (
+        daily
+        .sort_values(
+            [
+                "model",
+                "date",
+            ]
+        )
+        .reset_index(
+            drop=True
+        )
+    )
+
+
+# ============================================================
+# SUMMARY
+# ============================================================
+
+def calculate_summary(
+    df,
+    model_key,
+):
+
+    ranks = (
+        df[
+            "actual_rank"
+        ]
+        .to_numpy(
+            dtype=float
+        )
+    )
+
+
+    record = {
+        "model": (
+            model_key
+        ),
+
+        "n_test": (
+            len(
+                df
+            )
         ),
 
         "log_loss": float(
             df[
                 "model_loss"
-            ].mean()
+            ]
+            .mean()
         ),
 
         "uniform_log_loss": (
@@ -265,7 +864,8 @@ def calculate_summary(
             UNIFORM_LOG_LOSS
             - df[
                 "model_loss"
-            ].mean()
+            ]
+            .mean()
         ),
 
         "relative_log_loss_gain_pct": float(
@@ -273,7 +873,8 @@ def calculate_summary(
                 UNIFORM_LOG_LOSS
                 - df[
                     "model_loss"
-                ].mean()
+                ]
+                .mean()
             )
             / UNIFORM_LOG_LOSS
             * 100
@@ -315,31 +916,55 @@ def calculate_summary(
         "mean_actual_probability": float(
             df[
                 "actual_probability"
-            ].mean()
+            ]
+            .mean()
+        ),
+
+        "mean_tie_size": float(
+            df[
+                "n_equal"
+            ]
+            .mean()
+        ),
+
+        "max_tie_size": int(
+            df[
+                "n_equal"
+            ]
+            .max()
         ),
     }
 
+
     for k in TOP_K_VALUES:
 
-        accuracy = (
-            top_k_accuracy_from_rank(
-                ranks,
-                k,
-            )
+        accuracy = float(
+            df[
+                f"top_{k}_score"
+            ]
+            .mean()
         )
+
 
         random_accuracy = (
             k
             / NUMBER_OF_CLASSES
         )
 
+
         record[
             f"top_{k}_accuracy"
-        ] = accuracy
+        ] = (
+            accuracy
+        )
+
 
         record[
             f"top_{k}_random"
-        ] = random_accuracy
+        ] = (
+            random_accuracy
+        )
+
 
         record[
             f"top_{k}_lift_pp"
@@ -348,6 +973,7 @@ def calculate_summary(
             - random_accuracy
         )
 
+
         record[
             f"top_{k}_lift_ratio"
         ] = (
@@ -355,20 +981,23 @@ def calculate_summary(
             / random_accuracy
         )
 
+
     return record
 
 
 def build_model_summary(
-    predictions: pd.DataFrame,
-) -> pd.DataFrame:
-    """Tổng hợp tất cả model."""
+    daily,
+):
 
     records = []
 
-    for model_key, subset in (
-        predictions.groupby(
-            "model_key"
-        )
+
+    for (
+        model_key,
+        subset,
+    ) in daily.groupby(
+        "model",
+        sort=False,
     ):
 
         records.append(
@@ -378,17 +1007,21 @@ def build_model_summary(
             )
         )
 
-    # --------------------------------
-    # Uniform theoretical baseline
-    # --------------------------------
 
-    uniform_record = {
-        "model": "uniform",
+    # ========================================================
+    # UNIFORM THEORETICAL
+    # ========================================================
+
+    uniform = {
+        "model": (
+            "uniform"
+        ),
 
         "n_test": (
-            predictions[
+            daily[
                 "date"
-            ].nunique()
+            ]
+            .nunique()
         ),
 
         "log_loss": (
@@ -416,22 +1049,30 @@ def build_model_summary(
         ),
 
         "true_rank_q25": (
-            25.25
+            50.5
         ),
 
         "true_rank_q75": (
-            75.75
+            50.5
         ),
 
         "true_rank_q90": (
-            90.1
+            50.5
         ),
 
         "mean_actual_probability": (
-            1
-            / NUMBER_OF_CLASSES
+            0.01
+        ),
+
+        "mean_tie_size": (
+            100.0
+        ),
+
+        "max_tie_size": (
+            100
         ),
     }
+
 
     for k in TOP_K_VALUES:
 
@@ -440,110 +1081,147 @@ def build_model_summary(
             / NUMBER_OF_CLASSES
         )
 
-        uniform_record[
+
+        uniform[
             f"top_{k}_accuracy"
-        ] = random_accuracy
+        ] = (
+            random_accuracy
+        )
 
-        uniform_record[
+        uniform[
             f"top_{k}_random"
-        ] = random_accuracy
+        ] = (
+            random_accuracy
+        )
 
-        uniform_record[
+        uniform[
             f"top_{k}_lift_pp"
-        ] = 0.0
+        ] = (
+            0.0
+        )
 
-        uniform_record[
+        uniform[
             f"top_{k}_lift_ratio"
-        ] = 1.0
+        ] = (
+            1.0
+        )
+
 
     records.append(
-        uniform_record
+        uniform
     )
+
 
     summary = pd.DataFrame(
         records
     )
 
-    summary = (
-        summary.sort_values(
-            "log_loss"
-        )
-        .reset_index(drop=True)
-    )
 
-    return summary
+    return (
+        summary
+        .sort_values(
+            [
+                "log_loss",
+                "mean_true_rank",
+            ]
+        )
+        .reset_index(
+            drop=True
+        )
+    )
 
 
 # ============================================================
 # FOLD SUMMARY
 # ============================================================
 
-
 def build_fold_summary(
-    predictions: pd.DataFrame,
-) -> pd.DataFrame:
-    """So sánh ranking theo từng fold."""
+    daily,
+):
 
     records = []
+
 
     for (
         model_key,
         fold,
-    ), subset in predictions.groupby(
+    ), subset in daily.groupby(
         [
-            "model_key",
+            "model",
             "fold",
-        ]
+        ],
+        sort=False,
     ):
 
-        ranks = (
-            subset[
-                "actual_rank"
-            ]
-            .to_numpy()
-        )
-
         record = {
-            "model": model_key,
-            "fold": fold,
+            "model": (
+                model_key
+            ),
 
-            "n_test": len(
-                subset
+            "fold": (
+                fold
+            ),
+
+            "n_test": (
+                len(
+                    subset
+                )
             ),
 
             "log_loss": float(
                 subset[
                     "model_loss"
-                ].mean()
+                ]
+                .mean()
+            ),
+
+            "log_loss_gain_vs_uniform": float(
+                UNIFORM_LOG_LOSS
+                - subset[
+                    "model_loss"
+                ]
+                .mean()
             ),
 
             "mean_true_rank": float(
-                np.mean(
-                    ranks
-                )
+                subset[
+                    "actual_rank"
+                ]
+                .mean()
             ),
 
             "median_true_rank": float(
-                np.median(
-                    ranks
-                )
+                subset[
+                    "actual_rank"
+                ]
+                .median()
+            ),
+
+            "mean_actual_probability": float(
+                subset[
+                    "actual_probability"
+                ]
+                .mean()
             ),
         }
+
 
         for k in TOP_K_VALUES:
 
             record[
                 f"top_{k}_accuracy"
-            ] = (
-                top_k_accuracy_from_rank(
-                    ranks,
-                    k,
-                )
+            ] = float(
+                subset[
+                    f"top_{k}_score"
+                ]
+                .mean()
             )
+
 
         records.append(
             record
         )
+
 
     return pd.DataFrame(
         records
@@ -554,48 +1232,117 @@ def build_fold_summary(
 # RANK CDF
 # ============================================================
 
-
 def build_rank_cdf(
-    predictions: pd.DataFrame,
-) -> pd.DataFrame:
+    daily,
+):
     """
-    Tính empirical CDF:
+    Tie-aware expected CDF.
 
-        P(actual_rank <= k)
+    Với fractional average rank không nên dùng:
+        rank <= k
 
-    với k = 1,...,100.
+    trực tiếp.
+
+    Ta dùng luôn top-k fractional score đã tính.
+
+    Với k ngoài TOP_K_VALUES:
+        tính fractional score trực tiếp từ n_greater/n_equal.
     """
 
     records = []
 
-    for model_key, subset in (
-        predictions.groupby(
-            "model_key"
-        )
+
+    for (
+        model_key,
+        subset,
+    ) in daily.groupby(
+        "model",
+        sort=False,
     ):
 
-        ranks = (
+        n_greater = (
             subset[
-                "actual_rank"
+                "n_greater"
             ]
-            .to_numpy()
+            .to_numpy(
+                dtype=int
+            )
         )
+
+        n_equal = (
+            subset[
+                "n_equal"
+            ]
+            .to_numpy(
+                dtype=int
+            )
+        )
+
 
         for k in range(
             1,
             NUMBER_OF_CLASSES + 1,
         ):
 
-            empirical_cdf = float(
-                np.mean(
-                    ranks <= k
+            score = np.zeros(
+                len(
+                    subset
+                ),
+                dtype=float,
+            )
+
+
+            completely_inside = (
+                (
+                    n_greater
+                    + n_equal
+                )
+                <= k
+            )
+
+
+            score[
+                completely_inside
+            ] = 1.0
+
+
+            crossing = (
+                (n_greater < k)
+                & (
+                    (
+                        n_greater
+                        + n_equal
+                    )
+                    > k
                 )
             )
+
+
+            score[
+                crossing
+            ] = (
+                (
+                    k
+                    - n_greater[
+                        crossing
+                    ]
+                )
+                / n_equal[
+                    crossing
+                ]
+            )
+
+
+            empirical_cdf = float(
+                score.mean()
+            )
+
 
             uniform_cdf = (
                 k
                 / NUMBER_OF_CLASSES
             )
+
 
             records.append(
                 {
@@ -603,7 +1350,9 @@ def build_rank_cdf(
                         model_key
                     ),
 
-                    "rank": k,
+                    "rank": (
+                        k
+                    ),
 
                     "empirical_cdf": (
                         empirical_cdf
@@ -625,6 +1374,51 @@ def build_rank_cdf(
                 }
             )
 
+
+    # ========================================================
+    # UNIFORM
+    # ========================================================
+
+    for k in range(
+        1,
+        NUMBER_OF_CLASSES + 1,
+    ):
+
+        value = (
+            k
+            / NUMBER_OF_CLASSES
+        )
+
+
+        records.append(
+            {
+                "model": (
+                    "uniform"
+                ),
+
+                "rank": (
+                    k
+                ),
+
+                "empirical_cdf": (
+                    value
+                ),
+
+                "uniform_cdf": (
+                    value
+                ),
+
+                "lift_pp": (
+                    0.0
+                ),
+
+                "lift_ratio": (
+                    1.0
+                ),
+            }
+        )
+
+
     return pd.DataFrame(
         records
     )
@@ -634,43 +1428,52 @@ def build_rank_cdf(
 # SELECTED RANK TABLE
 # ============================================================
 
-
 def build_selected_rank_table(
-    rank_cdf: pd.DataFrame,
-) -> pd.DataFrame:
-    """Bảng CDF tại các rank quan trọng."""
+    rank_cdf,
+):
 
     selected = (
         rank_cdf.loc[
             rank_cdf[
                 "rank"
-            ].isin(
+            ]
+            .isin(
                 TOP_K_VALUES
             )
         ]
         .copy()
     )
 
-    selected["empirical_pct"] = (
+
+    selected[
+        "empirical_pct"
+    ] = (
         selected[
             "empirical_cdf"
         ]
         * 100
     )
 
-    selected["uniform_pct"] = (
+
+    selected[
+        "uniform_pct"
+    ] = (
         selected[
             "uniform_cdf"
         ]
         * 100
     )
 
-    selected["lift_pp_pct"] = (
+
+    selected[
+        "lift_pp_pct"
+    ] = (
         selected[
             "lift_pp"
         ]
         * 100
     )
+
 
     return selected[
         [
@@ -685,17 +1488,12 @@ def build_selected_rank_table(
 
 
 # ============================================================
-# MODEL COMPARISON FOR STRATEGY
+# STRATEGY CANDIDATE TABLE
 # ============================================================
 
-
 def build_strategy_candidate_table(
-    summary: pd.DataFrame,
-) -> pd.DataFrame:
-    """
-    Tạo bảng ngắn để quyết định model nào
-    đáng chuyển sang strategy 14-16.
-    """
+    summary,
+):
 
     columns = [
         "model",
@@ -709,77 +1507,80 @@ def build_strategy_candidate_table(
         "top_20_accuracy",
         "mean_true_rank",
         "median_true_rank",
+        "mean_actual_probability",
+        "mean_tie_size",
     ]
 
-    output = (
+
+    return (
         summary[
             columns
         ]
         .copy()
     )
 
-    return output
-
 
 # ============================================================
-# PLOTS
+# PLOT
 # ============================================================
-
 
 def plot_rank_cdf(
-    rank_cdf: pd.DataFrame,
-) -> None:
-    """Vẽ empirical rank CDF của tất cả model."""
+    rank_cdf,
+):
+
+    FIGURE_DIR.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
 
     fig, ax = plt.subplots(
-        figsize=(11, 7),
+        figsize=(
+            11,
+            7,
+        ),
         constrained_layout=True,
     )
 
-    for model_key, subset in (
-        rank_cdf.groupby(
-            "model"
-        )
+
+    for (
+        model_key,
+        subset,
+    ) in rank_cdf.groupby(
+        "model",
+        sort=False,
     ):
 
         ax.plot(
-            subset["rank"],
+            subset[
+                "rank"
+            ],
+
             subset[
                 "empirical_cdf"
             ],
-            label=model_key,
+
+            label=(
+                model_key
+            ),
         )
 
-    ranks = np.arange(
-        1,
-        NUMBER_OF_CLASSES + 1,
-    )
-
-    ax.plot(
-        ranks,
-        ranks / NUMBER_OF_CLASSES,
-        linestyle="--",
-        linewidth=2,
-        label="Uniform",
-    )
 
     ax.set_xlabel(
-        "Rank k"
+        "Top-k"
     )
 
     ax.set_ylabel(
-        "P(actual rank <= k)"
+        "Expected P(actual nằm trong Top-k)"
     )
 
     ax.set_title(
-        "CDF của rank kết quả thực tế",
-        fontsize=15,
-        fontweight="bold",
+        "Tie-aware probability ranking"
     )
 
     ax.set_xlim(
         1,
-        NUMBER_OF_CLASSES,
+        100,
     )
 
     ax.set_ylim(
@@ -795,230 +1596,32 @@ def plot_rank_cdf(
         fontsize=8
     )
 
+
     output_file = (
         FIGURE_DIR
         / "probability_rank_cdf.png"
     )
 
-    fig.savefig(
-        output_file,
-        dpi=200,
-        bbox_inches="tight",
-        facecolor="white",
-    )
-
-    plt.show()
-
-    plt.close(
-        fig
-    )
-
-    print(
-        f"Đã lưu: {output_file}"
-    )
-
-
-def plot_top_k_accuracy(
-    summary: pd.DataFrame,
-) -> None:
-    """Vẽ Top-k accuracy theo model."""
-
-    plot_data = (
-        summary.loc[
-            summary[
-                "model"
-            ].ne(
-                "uniform"
-            )
-        ]
-        .copy()
-    )
-
-    x = np.arange(
-        len(
-            plot_data
-        )
-    )
-
-    fig, ax = plt.subplots(
-        figsize=(13, 7),
-        constrained_layout=True,
-    )
-
-    width = 0.15
-
-    for index, k in enumerate(
-        TOP_K_VALUES
-    ):
-
-        offset = (
-            index
-            - (
-                len(
-                    TOP_K_VALUES
-                )
-                - 1
-            )
-            / 2
-        ) * width
-
-        ax.bar(
-            x + offset,
-            plot_data[
-                f"top_{k}_accuracy"
-            ],
-            width,
-            label=f"Top-{k}",
-        )
-
-    ax.set_xticks(
-        x
-    )
-
-    ax.set_xticklabels(
-        plot_data[
-            "model"
-        ],
-        rotation=30,
-        ha="right",
-    )
-
-    ax.set_ylabel(
-        "Accuracy"
-    )
-
-    ax.set_title(
-        "Top-k accuracy theo mô hình",
-        fontsize=15,
-        fontweight="bold",
-    )
-
-    ax.legend()
-
-    ax.grid(
-        axis="y",
-        alpha=0.25,
-    )
-
-    output_file = (
-        FIGURE_DIR
-        / "probability_topk_comparison.png"
-    )
 
     fig.savefig(
         output_file,
-        dpi=200,
-        bbox_inches="tight",
-        facecolor="white",
+        dpi=160,
     )
-
-    plt.show()
 
     plt.close(
         fig
-    )
-
-    print(
-        f"Đã lưu: {output_file}"
-    )
-
-
-def plot_mean_rank(
-    summary: pd.DataFrame,
-) -> None:
-    """So sánh mean rank với baseline Uniform 50.5."""
-
-    plot_data = (
-        summary.loc[
-            summary[
-                "model"
-            ].ne(
-                "uniform"
-            )
-        ]
-        .sort_values(
-            "mean_true_rank"
-        )
-        .copy()
-    )
-
-    fig, ax = plt.subplots(
-        figsize=(11, 6),
-        constrained_layout=True,
-    )
-
-    ax.bar(
-        plot_data[
-            "model"
-        ],
-        plot_data[
-            "mean_true_rank"
-        ],
-    )
-
-    ax.axhline(
-        50.5,
-        linestyle="--",
-        linewidth=2,
-        label="Uniform expected rank = 50.5",
-    )
-
-    ax.set_ylabel(
-        "Mean actual rank"
-    )
-
-    ax.set_title(
-        "Mean rank của kết quả thực tế",
-        fontsize=15,
-        fontweight="bold",
-    )
-
-    ax.tick_params(
-        axis="x",
-        rotation=30,
-    )
-
-    ax.legend()
-
-    ax.grid(
-        axis="y",
-        alpha=0.25,
-    )
-
-    output_file = (
-        FIGURE_DIR
-        / "probability_mean_rank.png"
-    )
-
-    fig.savefig(
-        output_file,
-        dpi=200,
-        bbox_inches="tight",
-        facecolor="white",
-    )
-
-    plt.show()
-
-    plt.close(
-        fig
-    )
-
-    print(
-        f"Đã lưu: {output_file}"
     )
 
 
 # ============================================================
-# PRINT
+# PRINT SUMMARY
 # ============================================================
-
 
 def print_summary(
-    summary: pd.DataFrame,
-) -> None:
-    """In bảng tổng hợp chính."""
+    summary,
+):
 
-    display_columns = [
+    columns = [
         "model",
         "n_test",
         "log_loss",
@@ -1029,34 +1632,38 @@ def print_summary(
         "top_10_accuracy",
         "top_20_accuracy",
         "mean_true_rank",
-        "median_true_rank",
+        "mean_tie_size",
     ]
+
 
     print(
         "\n"
-        + "=" * 175
+        + "=" * 190
     )
 
     print(
-        "TỔNG HỢP PROBABILITY RANKING"
+        "PROBABILITY RANKING SUMMARY - TIE AWARE"
     )
 
     print(
-        "=" * 175
+        "=" * 190
     )
+
 
     print(
         summary[
-            display_columns
-        ].to_string(
+            columns
+        ]
+        .to_string(
             index=False,
+
             formatters={
                 "log_loss": (
                     "{:.6f}".format
                 ),
 
                 "log_loss_gain_vs_uniform": (
-                    "{:.6f}".format
+                    "{:+.6f}".format
                 ),
 
                 "top_1_accuracy": (
@@ -1083,7 +1690,7 @@ def print_summary(
                     "{:.2f}".format
                 ),
 
-                "median_true_rank": (
+                "mean_tie_size": (
                     "{:.2f}".format
                 ),
             },
@@ -1091,42 +1698,103 @@ def print_summary(
     )
 
 
-def print_top_k_lift(
-    selected_rank_table: pd.DataFrame,
-) -> None:
-    """In lift so với random ở các rank quan trọng."""
+# ============================================================
+# PRINT CATBOOST COMPARISON
+# ============================================================
+
+def print_catboost_comparison(
+    fold_summary,
+):
+
+    subset = (
+        fold_summary.loc[
+            fold_summary[
+                "model"
+            ]
+            .isin(
+                [
+                    "catboost",
+                    "catboost_retrain",
+                ]
+            )
+        ]
+        .copy()
+    )
+
+
+    if subset.empty:
+
+        return
+
+
+    columns = [
+        "model",
+        "fold",
+        "n_test",
+        "log_loss",
+        "log_loss_gain_vs_uniform",
+        "top_1_accuracy",
+        "top_5_accuracy",
+        "top_10_accuracy",
+        "top_20_accuracy",
+        "mean_true_rank",
+    ]
+
 
     print(
         "\n"
-        + "=" * 120
+        + "=" * 180
     )
 
     print(
-        "LIFT CDF SO VỚI UNIFORM"
+        "CATBOOST STATIC VS RETRAIN - TIE AWARE"
     )
 
     print(
-        "=" * 120
+        "=" * 180
     )
 
+
     print(
-        selected_rank_table.to_string(
+        subset[
+            columns
+        ]
+        .sort_values(
+            [
+                "fold",
+                "model",
+            ]
+        )
+        .to_string(
             index=False,
+
             formatters={
-                "empirical_pct": (
-                    "{:.3f}".format
+                "log_loss": (
+                    "{:.6f}".format
                 ),
 
-                "uniform_pct": (
-                    "{:.3f}".format
+                "log_loss_gain_vs_uniform": (
+                    "{:+.6f}".format
                 ),
 
-                "lift_pp_pct": (
-                    "{:+.3f}".format
+                "top_1_accuracy": (
+                    "{:.4%}".format
                 ),
 
-                "lift_ratio": (
-                    "{:.3f}".format
+                "top_5_accuracy": (
+                    "{:.4%}".format
+                ),
+
+                "top_10_accuracy": (
+                    "{:.4%}".format
+                ),
+
+                "top_20_accuracy": (
+                    "{:.4%}".format
+                ),
+
+                "mean_true_rank": (
+                    "{:.2f}".format
                 ),
             },
         )
@@ -1137,9 +1805,7 @@ def print_top_k_lift(
 # MAIN
 # ============================================================
 
-
-def main() -> None:
-    """Chạy probability ranking analysis."""
+def main():
 
     TABLE_DIR.mkdir(
         parents=True,
@@ -1151,137 +1817,189 @@ def main() -> None:
         exist_ok=True,
     )
 
-    # --------------------------------
-    # Load
-    # --------------------------------
+
+    # ========================================================
+    # LOAD
+    # ========================================================
 
     predictions = (
         load_predictions()
     )
 
-    print(
-        f"Loaded "
-        f"{len(predictions):,} "
-        f"prediction rows."
-    )
 
     print(
-        "\nModels:"
+        f"\nRaw prediction rows: "
+        f"{len(predictions):,}"
     )
 
-    for model_key, count in (
+
+    print(
+        "Models:"
+    )
+
+    for model_name in (
         predictions[
             "model_key"
         ]
-        .value_counts()
-        .sort_index()
-        .items()
+        .unique()
     ):
 
         print(
-            f"  {model_key}: "
-            f"{count:,}"
+            f"  - {model_name}"
         )
 
-    # --------------------------------
-    # Summary
-    # --------------------------------
 
-    model_summary = (
-        build_model_summary(
+    # ========================================================
+    # DAILY TIE-AWARE
+    # ========================================================
+
+    daily = (
+        build_daily_ranking(
             predictions
         )
     )
+
+
+    print(
+        f"\nRanking daily rows: "
+        f"{len(daily):,}"
+    )
+
+
+    # ========================================================
+    # SUMMARY
+    # ========================================================
+
+    summary = (
+        build_model_summary(
+            daily
+        )
+    )
+
 
     fold_summary = (
         build_fold_summary(
-            predictions
+            daily
         )
     )
+
 
     rank_cdf = (
         build_rank_cdf(
-            predictions
+            daily
         )
     )
 
-    selected_rank_table = (
+
+    selected_ranks = (
         build_selected_rank_table(
             rank_cdf
         )
     )
 
+
     strategy_candidates = (
         build_strategy_candidate_table(
-            model_summary
+            summary
         )
     )
 
-    # --------------------------------
-    # Print
-    # --------------------------------
+
+    # ========================================================
+    # PRINT
+    # ========================================================
 
     print_summary(
-        model_summary
+        summary
     )
 
-    print_top_k_lift(
-        selected_rank_table
+
+    print_catboost_comparison(
+        fold_summary
     )
 
-    # --------------------------------
-    # Save
-    # --------------------------------
 
-    model_summary.to_csv(
-        TABLE_DIR
-        / "probability_ranking_summary.csv",
+    # ========================================================
+    # SAVE
+    # ========================================================
+
+    daily.to_csv(
+        OUTPUT_DAILY,
         index=False,
         encoding="utf-8-sig",
     )
+
+
+    summary.to_csv(
+        OUTPUT_SUMMARY,
+        index=False,
+        encoding="utf-8-sig",
+    )
+
 
     fold_summary.to_csv(
-        TABLE_DIR
-        / "probability_ranking_by_fold.csv",
+        OUTPUT_FOLD_SUMMARY,
         index=False,
         encoding="utf-8-sig",
     )
+
 
     rank_cdf.to_csv(
-        TABLE_DIR
-        / "probability_rank_cdf.csv",
+        OUTPUT_RANK_CDF,
         index=False,
         encoding="utf-8-sig",
     )
 
-    selected_rank_table.to_csv(
-        TABLE_DIR
-        / "probability_rank_selected.csv",
+
+    selected_ranks.to_csv(
+        OUTPUT_SELECTED_RANKS,
         index=False,
         encoding="utf-8-sig",
     )
+
 
     strategy_candidates.to_csv(
-        TABLE_DIR
-        / "strategy_model_candidates.csv",
+        OUTPUT_STRATEGY_CANDIDATES,
         index=False,
         encoding="utf-8-sig",
     )
 
-    # --------------------------------
-    # Figures
-    # --------------------------------
 
     plot_rank_cdf(
         rank_cdf
     )
 
-    plot_top_k_accuracy(
-        model_summary
+
+    # ========================================================
+    # FINAL
+    # ========================================================
+
+    print(
+        "\nĐã lưu:"
     )
 
-    plot_mean_rank(
-        model_summary
+    print(
+        OUTPUT_DAILY
+    )
+
+    print(
+        OUTPUT_SUMMARY
+    )
+
+    print(
+        OUTPUT_FOLD_SUMMARY
+    )
+
+    print(
+        OUTPUT_RANK_CDF
+    )
+
+    print(
+        OUTPUT_SELECTED_RANKS
+    )
+
+    print(
+        OUTPUT_STRATEGY_CANDIDATES
     )
 
 

@@ -1,47 +1,65 @@
 """
-18 - NESTED WALK-FORWARD STRATEGY
+19 - ADAPTIVE PERCENTILE THRESHOLD STRATEGY
 
 Mục tiêu
 --------
-Kiểm tra strategy theo deployment-style:
+Strategy 18 freeze confidence threshold tuyệt đối:
 
-    chọn strategy chỉ bằng dữ liệu quá khứ
-    rồi freeze toàn bộ rule
-    và áp dụng sang future fold.
+    q_m(t) >= tau_history
 
-Outer deployment:
+Điều này có thể thất bại khi scale của probability/confidence
+thay đổi giữa history và future.
 
-    Future 2022-2023:
-        HISTORY = 2020-2021
+Strategy 19 thay threshold tuyệt đối bằng threshold percentile
+được cập nhật chỉ từ confidence QUÁ KHỨ:
 
-    Future 2024-2026:
-        HISTORY = 2020-2021 + 2022-2023
+    tau_t =
+        quantile(
+            q_{t-W}, ..., q_{t-1},
+            1 - target_rate
+        )
 
-Trên HISTORY:
-    - xét tất cả model
-    - m = 1..30
-    - participation rate:
-          10%, 20%, 30%, 50%
-    - tính q_m = sum probability Top-m
-    - xác định confidence threshold từ HISTORY
-    - backtest rule trên HISTORY
-    - chọn đúng 1 config
+Không dùng actual tương lai để cập nhật threshold.
 
-Sau đó FREEZE:
-    model
-    m
-    participation rate
-    threshold
-    tie acceptance rate
+Ví dụ:
+    target_rate = 20%
 
-và áp dụng nguyên xi sang FUTURE.
+thì ngày t ta so sánh q_t với percentile 80%
+của q trong W evaluation days trước đó.
 
-Không được dùng future actual để:
-    - chọn model
-    - chọn m
-    - chọn participation rate
-    - chọn threshold
-    - điều chỉnh selection score
+QUAN TRỌNG
+----------
+Không ép model phải bet đúng 20% nếu confidence đã collapse.
+
+Nếu q history gần như constant:
+
+    max(q) - min(q) <= DISPERSION_TOLERANCE
+
+=> strategy inactive.
+
+Điều này đặc biệt quan trọng cho CatBoost khi probability
+bị blend thành Uniform.
+
+Nested walk-forward
+-------------------
+Future 2022-2023:
+    chọn model / m / r
+    chỉ từ 2020-2021.
+
+Future 2024-2026:
+    chọn model / m / r
+    chỉ từ 2020-2021 + 2022-2023.
+
+KHÁC Strategy 18:
+    Strategy 18 chọn fixed threshold.
+
+    Strategy 19:
+        chọn model, m, r từ history
+        nhưng threshold được update động
+        chỉ bằng past q.
+
+Selection trên history cũng phải dùng adaptive rule,
+để strategy selection và future deployment nhất quán.
 
 Models
 ------
@@ -52,46 +70,15 @@ Models
       30 / 60 / 90 / 180 / 365
 - Bayesian Markov
 
-Selection
----------
-Mặc định:
-
-    selection_score
-        = Wilson lower bound
-          - break-even hit rate
-
-Trong đó:
-
-    break-even hit rate = m / 80
-
-Mục đích:
-    ưu tiên config có statistical margin
-    hơn là chỉ ROI cao do ít bet.
-
-Điều kiện:
-    n_history_bets >= MIN_HISTORY_BETS
-
-Nếu tất cả config không đủ bet:
-    fallback dùng config có nhiều history bets nhất.
-
-Lưu ý
------
-Đây vẫn chỉ có 2 future deployment folds,
-nên sample của cấp chiến lược còn nhỏ.
-
-Đặc biệt:
-    aggregate ROI không được diễn giải độc lập
-    nếu một future fold không phát sinh bet.
-
-Output
-------
+Outputs
+-------
 artifacts/strategies/
 
-    nested_strategy_selection.csv
-    nested_strategy_history_configs.csv
-    nested_strategy_test_results.csv
-    nested_strategy_test_daily.csv
-    nested_strategy_summary.csv
+    adaptive_strategy_selection.csv
+    adaptive_strategy_history_configs.csv
+    adaptive_strategy_test_results.csv
+    adaptive_strategy_test_daily.csv
+    adaptive_strategy_summary.csv
 """
 
 from pathlib import Path
@@ -107,13 +94,11 @@ from scipy.stats import binomtest
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 
-
 TABLE_DIR = (
     PROJECT_DIR
     / "artifacts"
     / "tables"
 )
-
 
 STRATEGY_DIR = (
     PROJECT_DIR
@@ -147,6 +132,23 @@ TARGET_PARTICIPATION_RATES = [
 ]
 
 
+# ============================================================
+# ADAPTIVE THRESHOLD CONFIG
+# ============================================================
+
+# q history gần nhất dùng để tính percentile
+ADAPTIVE_WINDOW = 180
+
+
+# Ít nhất bao nhiêu q quá khứ mới bắt đầu bet
+MIN_CONFIDENCE_HISTORY = 60
+
+
+# Nếu q gần như constant => model không có confidence signal
+DISPERSION_TOLERANCE = 1e-10
+
+
+# Ít nhất bao nhiêu history bets mới được chọn config
 MIN_HISTORY_BETS = 50
 
 
@@ -160,7 +162,7 @@ PROBABILITY_COLUMNS = [
 
 
 # ============================================================
-# FILES
+# INPUT
 # ============================================================
 
 FILES = {
@@ -192,14 +194,12 @@ FILES = {
 
 
 # ============================================================
-# OUTER DEPLOYMENT FOLDS
+# OUTER WALK FORWARD
 # ============================================================
 
 OUTER_FOLDS = [
     {
-        "test_fold": (
-            "2022-2023"
-        ),
+        "test_fold": "2022-2023",
 
         "history_folds": [
             "2020-2021",
@@ -207,9 +207,7 @@ OUTER_FOLDS = [
     },
 
     {
-        "test_fold": (
-            "2024-2026"
-        ),
+        "test_fold": "2024-2026",
 
         "history_folds": [
             "2020-2021",
@@ -225,36 +223,32 @@ OUTER_FOLDS = [
 
 OUTPUT_SELECTION = (
     STRATEGY_DIR
-    / "nested_strategy_selection.csv"
+    / "adaptive_strategy_selection.csv"
 )
-
 
 OUTPUT_HISTORY_CONFIGS = (
     STRATEGY_DIR
-    / "nested_strategy_history_configs.csv"
+    / "adaptive_strategy_history_configs.csv"
 )
-
 
 OUTPUT_TEST_RESULTS = (
     STRATEGY_DIR
-    / "nested_strategy_test_results.csv"
+    / "adaptive_strategy_test_results.csv"
 )
-
 
 OUTPUT_TEST_DAILY = (
     STRATEGY_DIR
-    / "nested_strategy_test_daily.csv"
+    / "adaptive_strategy_test_daily.csv"
 )
-
 
 OUTPUT_SUMMARY = (
     STRATEGY_DIR
-    / "nested_strategy_summary.csv"
+    / "adaptive_strategy_summary.csv"
 )
 
 
 # ============================================================
-# TIE BREAK
+# TIE BREAK FOR NUMBER RANKING
 # ============================================================
 
 def create_tie_break_priority():
@@ -263,24 +257,20 @@ def create_tie_break_priority():
         RANDOM_STATE
     )
 
-
     permutation = rng.permutation(
         NUMBER_OF_CLASSES
     )
-
 
     priority = np.empty(
         NUMBER_OF_CLASSES,
         dtype=int,
     )
 
-
     priority[
         permutation
     ] = np.arange(
         NUMBER_OF_CLASSES
     )
-
 
     return priority
 
@@ -291,7 +281,7 @@ TIE_BREAK_PRIORITY = (
 
 
 # ============================================================
-# NORMALIZE PROBABILITY
+# NORMALIZE
 # ============================================================
 
 def normalize_probability_matrix(
@@ -303,22 +293,18 @@ def normalize_probability_matrix(
         dtype=float,
     )
 
-
     probabilities = np.clip(
         probabilities,
         0.0,
         None,
     )
 
-
     row_sum = (
-        probabilities
-        .sum(
+        probabilities.sum(
             axis=1,
             keepdims=True,
         )
     )
-
 
     if np.any(
         row_sum <= 0
@@ -327,7 +313,6 @@ def normalize_probability_matrix(
         raise ValueError(
             "Có probability row tổng <= 0."
         )
-
 
     return (
         probabilities
@@ -349,17 +334,14 @@ def rank_probability_matrix(
         )
     )
 
-
     classes = np.arange(
         NUMBER_OF_CLASSES
     )
-
 
     orders = np.empty(
         probabilities.shape,
         dtype=int,
     )
-
 
     for row_index in range(
         len(
@@ -381,12 +363,11 @@ def rank_probability_matrix(
             )
         )
 
-
     return orders
 
 
 # ============================================================
-# VALIDATE
+# LOAD
 # ============================================================
 
 def validate_columns(
@@ -401,14 +382,11 @@ def validate_columns(
         *PROBABILITY_COLUMNS,
     ]
 
-
     missing = [
         column
-        for column
-        in required
+        for column in required
         if column not in df.columns
     ]
-
 
     if missing:
 
@@ -417,10 +395,6 @@ def validate_columns(
             f"{missing}"
         )
 
-
-# ============================================================
-# LOAD
-# ============================================================
 
 def load_single_model(
     model_name,
@@ -434,12 +408,10 @@ def load_single_model(
             f"{file_path}"
         )
 
-
     print(
         f"Loading: "
         f"{model_name}"
     )
-
 
     df = pd.read_csv(
         file_path,
@@ -448,12 +420,10 @@ def load_single_model(
         ],
     ).copy()
 
-
     validate_columns(
         df,
         model_name,
     )
-
 
     if (
         model_name
@@ -466,9 +436,8 @@ def load_single_model(
         ):
 
             raise ValueError(
-                "rolling_cdm thiếu cột window."
+                "rolling_cdm thiếu window."
             )
-
 
         df[
             "model_key"
@@ -481,7 +450,6 @@ def load_single_model(
             .astype(str)
         )
 
-
     else:
 
         df[
@@ -490,14 +458,12 @@ def load_single_model(
             model_name
         )
 
-
     return df
 
 
 def load_predictions():
 
     frames = []
-
 
     for (
         model_name,
@@ -511,13 +477,11 @@ def load_predictions():
             )
         )
 
-
     result = pd.concat(
         frames,
         ignore_index=True,
         sort=False,
     )
-
 
     return (
         result
@@ -552,7 +516,6 @@ def prepare_model_data(
         .copy()
     )
 
-
     probabilities = (
         df[
             PROBABILITY_COLUMNS
@@ -562,13 +525,11 @@ def prepare_model_data(
         )
     )
 
-
     probabilities = (
         normalize_probability_matrix(
             probabilities
         )
     )
-
 
     actual = (
         df[
@@ -579,7 +540,6 @@ def prepare_model_data(
         )
     )
 
-
     order = (
         rank_probability_matrix(
             probabilities
@@ -588,13 +548,12 @@ def prepare_model_data(
 
 
     # ========================================================
-    # INVERSE RANK
+    # ACTUAL RANK
     # ========================================================
 
     inverse_rank = np.empty_like(
         order
     )
-
 
     inverse_rank[
         np.arange(
@@ -611,7 +570,6 @@ def prepare_model_data(
         NUMBER_OF_CLASSES + 1,
     )
 
-
     actual_rank = (
         inverse_rank[
             np.arange(
@@ -625,7 +583,7 @@ def prepare_model_data(
 
 
     # ========================================================
-    # CUMULATIVE PROBABILITY
+    # CUMULATIVE TOP-M PROBABILITY
     # ========================================================
 
     sorted_probabilities = (
@@ -636,7 +594,6 @@ def prepare_model_data(
         )
     )
 
-
     cumulative_probability = (
         np.cumsum(
             sorted_probabilities,
@@ -644,32 +601,17 @@ def prepare_model_data(
         )
     )
 
-
     return {
-        "df": (
-            df
-        ),
-
-        "actual": (
-            actual
-        ),
-
-        "order": (
-            order
-        ),
-
-        "actual_rank": (
-            actual_rank
-        ),
-
-        "cum_prob": (
-            cumulative_probability
-        ),
+        "df": df,
+        "actual": actual,
+        "order": order,
+        "actual_rank": actual_rank,
+        "cum_prob": cumulative_probability,
     }
 
 
 # ============================================================
-# BUILD TOP-M DATA
+# BUILD TOP-M
 # ============================================================
 
 def build_topm_data(
@@ -683,13 +625,11 @@ def build_topm_data(
         ]
     )
 
-
     actual = (
         prepared[
             "actual"
         ]
     )
-
 
     order = (
         prepared[
@@ -697,20 +637,17 @@ def build_topm_data(
         ]
     )
 
-
     actual_rank = (
         prepared[
             "actual_rank"
         ]
     )
 
-
     cumulative_probability = (
         prepared[
             "cum_prob"
         ]
     )
-
 
     top_m = (
         order[
@@ -719,7 +656,6 @@ def build_topm_data(
         ]
     )
 
-
     q_m = (
         cumulative_probability[
             :,
@@ -727,14 +663,12 @@ def build_topm_data(
         ]
     )
 
-
     hit = (
         actual_rank
         <= m
     ).astype(
         np.int8
     )
-
 
     selected_numbers = [
         ",".join(
@@ -746,7 +680,6 @@ def build_topm_data(
         for selected
         in top_m
     ]
-
 
     return pd.DataFrame(
         {
@@ -788,139 +721,14 @@ def build_topm_data(
 
 
 # ============================================================
-# CONFIDENCE RULE
-# ============================================================
-
-def calculate_confidence_rule(
-    q_values,
-    target_rate,
-):
-
-    q = np.asarray(
-        q_values,
-        dtype=float,
-    )
-
-
-    if len(
-        q
-    ) == 0:
-
-        return (
-            np.nan,
-            0.0,
-        )
-
-
-    if np.allclose(
-        q,
-        q[0],
-        rtol=1e-12,
-        atol=1e-15,
-    ):
-
-        return (
-            np.nan,
-            0.0,
-        )
-
-
-    threshold = float(
-        np.quantile(
-            q,
-            1.0
-            - target_rate,
-        )
-    )
-
-
-    greater_count = int(
-        np.sum(
-            q
-            > threshold
-        )
-    )
-
-
-    equal_mask = np.isclose(
-        q,
-        threshold,
-        rtol=1e-12,
-        atol=1e-15,
-    )
-
-
-    equal_count = int(
-        equal_mask.sum()
-    )
-
-
-    target_count = (
-        target_rate
-        * len(
-            q
-        )
-    )
-
-
-    needed_from_ties = (
-        target_count
-        - greater_count
-    )
-
-
-    if (
-        equal_count
-        > 0
-    ):
-
-        tie_acceptance_rate = (
-            needed_from_ties
-            / equal_count
-        )
-
-    else:
-
-        tie_acceptance_rate = (
-            0.0
-        )
-
-
-    tie_acceptance_rate = float(
-        np.clip(
-            tie_acceptance_rate,
-            0.0,
-            1.0,
-        )
-    )
-
-
-    return (
-        threshold,
-        tie_acceptance_rate,
-    )
-
-
-# ============================================================
 # STABLE SEED
 # ============================================================
 
-def build_seed(
-    model_key,
-    fold_label,
-    m,
-    target_rate,
+def stable_seed(
+    text,
 ):
 
-    text = (
-        f"{model_key}|"
-        f"{fold_label}|"
-        f"{m}|"
-        f"{target_rate:.6f}"
-    )
-
-
-    text_value = sum(
+    value = sum(
         (
             index + 1
         )
@@ -937,100 +745,398 @@ def build_seed(
         )
     )
 
-
     return (
         RANDOM_STATE
-        + text_value
+        + value
     )
 
 
 # ============================================================
-# APPLY RULE
+# ADAPTIVE RULE
 # ============================================================
 
-def apply_confidence_rule(
-    q_values,
-    threshold,
-    tie_acceptance_rate,
-    seed,
+def run_adaptive_rule(
+    df,
+    target_rate,
+    initial_q_history=None,
+    seed_label="",
 ):
+    """
+    Sequential adaptive threshold.
 
-    q = np.asarray(
-        q_values,
-        dtype=float,
+    Khi quyết định ngày t:
+
+        history_q =
+            q của các ngày trước t
+
+        threshold_t =
+            percentile 1-r của recent history_q
+
+    Sau khi quyết định:
+        q_t được append vào q history.
+
+    actual_t KHÔNG dùng để update threshold.
+
+    Return:
+        bet
+        threshold
+        q_history_size
+        q_history_range
+        status
+    """
+
+    df = (
+        df
+        .sort_values(
+            "date"
+        )
+        .reset_index(
+            drop=True
+        )
+    )
+
+    q_current = (
+        df[
+            "q_m"
+        ]
+        .to_numpy(
+            dtype=float
+        )
+    )
+
+
+    # ========================================================
+    # INITIAL HISTORY
+    # ========================================================
+
+    if initial_q_history is None:
+
+        q_history = []
+
+    else:
+
+        q_history = list(
+            np.asarray(
+                initial_q_history,
+                dtype=float,
+            )
+        )
+
+
+    n_rows = len(
+        df
     )
 
 
     bet = np.zeros(
-        len(
-            q
-        ),
+        n_rows,
         dtype=np.int8,
     )
 
 
-    if np.isnan(
-        threshold
+    thresholds = np.full(
+        n_rows,
+        np.nan,
+        dtype=float,
+    )
+
+
+    history_sizes = np.zeros(
+        n_rows,
+        dtype=int,
+    )
+
+
+    history_ranges = np.full(
+        n_rows,
+        np.nan,
+        dtype=float,
+    )
+
+
+    status = np.empty(
+        n_rows,
+        dtype=object,
+    )
+
+
+    rng = np.random.default_rng(
+        stable_seed(
+            seed_label
+        )
+    )
+
+
+    # ========================================================
+    # SEQUENTIAL
+    # ========================================================
+
+    for i in range(
+        n_rows
     ):
 
-        return bet
-
-
-    greater = (
-        q
-        > threshold
-    )
-
-
-    equal = np.isclose(
-        q,
-        threshold,
-        rtol=1e-12,
-        atol=1e-15,
-    )
-
-
-    bet[
-        greater
-    ] = 1
-
-
-    tie_indices = np.flatnonzero(
-        equal
-    )
-
-
-    if (
-        len(
-            tie_indices
-        )
-        > 0
-        and tie_acceptance_rate > 0
-    ):
-
-        rng = np.random.default_rng(
-            seed
+        recent_history = np.asarray(
+            q_history[
+                -ADAPTIVE_WINDOW:
+            ],
+            dtype=float,
         )
 
 
-        accepted_mask = (
-            rng.random(
-                len(
-                    tie_indices
+        history_sizes[
+            i
+        ] = len(
+            recent_history
+        )
+
+
+        # ====================================================
+        # NOT ENOUGH HISTORY
+        # ====================================================
+
+        if (
+            len(
+                recent_history
+            )
+            < MIN_CONFIDENCE_HISTORY
+        ):
+
+            status[
+                i
+            ] = (
+                "warmup"
+            )
+
+
+            q_history.append(
+                q_current[
+                    i
+                ]
+            )
+
+            continue
+
+
+        # ====================================================
+        # DISPERSION GATE
+        # ====================================================
+
+        q_range = float(
+            np.max(
+                recent_history
+            )
+            - np.min(
+                recent_history
+            )
+        )
+
+
+        history_ranges[
+            i
+        ] = (
+            q_range
+        )
+
+
+        if (
+            q_range
+            <= DISPERSION_TOLERANCE
+        ):
+
+            status[
+                i
+            ] = (
+                "constant_confidence"
+            )
+
+
+            q_history.append(
+                q_current[
+                    i
+                ]
+            )
+
+            continue
+
+
+        # ====================================================
+        # ADAPTIVE THRESHOLD
+        # ====================================================
+
+        threshold = float(
+            np.quantile(
+                recent_history,
+                1.0
+                - target_rate,
+            )
+        )
+
+
+        thresholds[
+            i
+        ] = (
+            threshold
+        )
+
+
+        current_q = (
+            q_current[
+                i
+            ]
+        )
+
+
+        # ====================================================
+        # ABOVE THRESHOLD
+        # ====================================================
+
+        if (
+            current_q
+            > threshold
+        ):
+
+            bet[
+                i
+            ] = 1
+
+            status[
+                i
+            ] = (
+                "bet_above"
+            )
+
+
+        # ====================================================
+        # EXACT TIE
+        # ====================================================
+
+        elif np.isclose(
+            current_q,
+            threshold,
+            rtol=1e-12,
+            atol=1e-15,
+        ):
+
+            greater_count = int(
+                np.sum(
+                    recent_history
+                    > threshold
                 )
             )
-            < tie_acceptance_rate
+
+
+            equal_count = int(
+                np.sum(
+                    np.isclose(
+                        recent_history,
+                        threshold,
+                        rtol=1e-12,
+                        atol=1e-15,
+                    )
+                )
+            )
+
+
+            target_count = (
+                target_rate
+                * len(
+                    recent_history
+                )
+            )
+
+
+            if (
+                equal_count
+                > 0
+            ):
+
+                tie_acceptance = (
+                    (
+                        target_count
+                        - greater_count
+                    )
+                    / equal_count
+                )
+
+            else:
+
+                tie_acceptance = (
+                    0.0
+                )
+
+
+            tie_acceptance = float(
+                np.clip(
+                    tie_acceptance,
+                    0.0,
+                    1.0,
+                )
+            )
+
+
+            if (
+                rng.random()
+                < tie_acceptance
+            ):
+
+                bet[
+                    i
+                ] = 1
+
+                status[
+                    i
+                ] = (
+                    "bet_tie"
+                )
+
+            else:
+
+                status[
+                    i
+                ] = (
+                    "skip_tie"
+                )
+
+
+        else:
+
+            status[
+                i
+            ] = (
+                "below_threshold"
+            )
+
+
+        # ====================================================
+        # q_t becomes history only AFTER decision
+        # ====================================================
+
+        q_history.append(
+            current_q
         )
 
 
-        bet[
-            tie_indices[
-                accepted_mask
-            ]
-        ] = 1
+    return {
+        "bet": (
+            bet
+        ),
 
+        "threshold": (
+            thresholds
+        ),
 
-    return bet
+        "history_size": (
+            history_sizes
+        ),
+
+        "history_range": (
+            history_ranges
+        ),
+
+        "status": (
+            status
+        ),
+    }
 
 
 # ============================================================
@@ -1050,24 +1156,20 @@ def wilson_interval(
             np.nan,
         )
 
-
     p_hat = (
         hits
         / bets
     )
 
-
     z2 = (
         z ** 2
     )
-
 
     denominator = (
         1.0
         + z2
         / bets
     )
-
 
     center = (
         p_hat
@@ -1077,7 +1179,6 @@ def wilson_interval(
             * bets
         )
     ) / denominator
-
 
     margin = (
         z
@@ -1102,7 +1203,6 @@ def wilson_interval(
         )
     )
 
-
     return (
         max(
             0.0,
@@ -1123,7 +1223,7 @@ def wilson_interval(
 
 
 # ============================================================
-# EVALUATE BETS
+# ECONOMIC EVALUATION
 # ============================================================
 
 def evaluate_bets(
@@ -1137,8 +1237,7 @@ def evaluate_bets(
         dtype=int,
     )
 
-
-    hit_array = (
+    hit = (
         df[
             "hit"
         ]
@@ -1147,24 +1246,20 @@ def evaluate_bets(
         )
     )
 
-
     n_days = len(
         df
     )
-
 
     n_bets = int(
         bet.sum()
     )
 
-
     n_hits = int(
         np.sum(
-            hit_array
-            * bet
+            bet
+            * hit
         )
     )
-
 
     participation_rate = (
         n_bets
@@ -1173,7 +1268,6 @@ def evaluate_bets(
         else np.nan
     )
 
-
     hit_rate = (
         n_hits
         / n_bets
@@ -1181,12 +1275,10 @@ def evaluate_bets(
         else np.nan
     )
 
-
     random_hit_rate = (
         m
         / NUMBER_OF_CLASSES
     )
-
 
     break_even_hit_rate = (
         m
@@ -1194,25 +1286,21 @@ def evaluate_bets(
         / PAYOUT_IF_HIT
     )
 
-
     total_cost = (
         n_bets
         * m
         * COST_PER_NUMBER
     )
 
-
     total_revenue = (
         n_hits
         * PAYOUT_IF_HIT
     )
 
-
     total_profit = (
         total_revenue
         - total_cost
     )
-
 
     roi = (
         total_profit
@@ -1221,45 +1309,25 @@ def evaluate_bets(
         else np.nan
     )
 
-
     (
         wilson_lower,
         wilson_upper,
     ) = (
         wilson_interval(
-            hits=(
-                n_hits
-            ),
-
-            bets=(
-                n_bets
-            ),
+            n_hits,
+            n_bets,
         )
     )
 
-
-    if (
-        n_bets
-        > 0
-    ):
+    if n_bets > 0:
 
         p_break_even = float(
             binomtest(
-                k=(
-                    n_hits
-                ),
-
-                n=(
-                    n_bets
-                ),
-
-                p=(
-                    break_even_hit_rate
-                ),
-
+                k=n_hits,
+                n=n_bets,
+                p=break_even_hit_rate,
                 alternative="greater",
-            )
-            .pvalue
+            ).pvalue
         )
 
     else:
@@ -1267,7 +1335,6 @@ def evaluate_bets(
         p_break_even = (
             1.0
         )
-
 
     return {
         "n_days": (
@@ -1311,7 +1378,7 @@ def evaluate_bets(
                 wilson_lower
                 - break_even_hit_rate
             )
-            if not np.isnan(
+            if pd.notna(
                 wilson_lower
             )
             else np.nan
@@ -1340,7 +1407,7 @@ def evaluate_bets(
 
 
 # ============================================================
-# HISTORY SEARCH
+# HISTORY CONFIG SEARCH
 # ============================================================
 
 def evaluate_history_configs(
@@ -1350,7 +1417,6 @@ def evaluate_history_configs(
 ):
 
     records = []
-
 
     history_label = (
         "+".join(
@@ -1403,73 +1469,28 @@ def evaluate_history_configs(
                 continue
 
 
-            q_history = (
-                history[
-                    "q_m"
-                ]
-                .to_numpy(
-                    dtype=float
-                )
-            )
-
-
             for target_rate in (
                 TARGET_PARTICIPATION_RATES
             ):
 
-                (
-                    threshold,
-                    tie_acceptance_rate,
-                ) = (
-                    calculate_confidence_rule(
-                        q_values=(
-                            q_history
+                adaptive = (
+                    run_adaptive_rule(
+                        df=(
+                            history
                         ),
 
                         target_rate=(
                             target_rate
                         ),
-                    )
-                )
 
+                        initial_q_history=None,
 
-                seed = (
-                    build_seed(
-                        model_key=(
-                            model_key
-                        ),
-
-                        fold_label=(
-                            history_label
-                        ),
-
-                        m=(
-                            m
-                        ),
-
-                        target_rate=(
-                            target_rate
-                        ),
-                    )
-                )
-
-
-                history_bet = (
-                    apply_confidence_rule(
-                        q_values=(
-                            q_history
-                        ),
-
-                        threshold=(
-                            threshold
-                        ),
-
-                        tie_acceptance_rate=(
-                            tie_acceptance_rate
-                        ),
-
-                        seed=(
-                            seed
+                        seed_label=(
+                            f"history|"
+                            f"{history_label}|"
+                            f"{model_key}|"
+                            f"{m}|"
+                            f"{target_rate}"
                         ),
                     )
                 )
@@ -1482,21 +1503,15 @@ def evaluate_history_configs(
                         ),
 
                         bet=(
-                            history_bet
+                            adaptive[
+                                "bet"
+                            ]
                         ),
 
                         m=(
                             m
                         ),
                     )
-                )
-
-
-                enough_bets = (
-                    metrics[
-                        "n_bet_days"
-                    ]
-                    >= MIN_HISTORY_BETS
                 )
 
 
@@ -1522,16 +1537,19 @@ def evaluate_history_configs(
                             target_rate
                         ),
 
-                        "threshold": (
-                            threshold
+                        "adaptive_window": (
+                            ADAPTIVE_WINDOW
                         ),
 
-                        "tie_acceptance_rate": (
-                            tie_acceptance_rate
+                        "min_confidence_history": (
+                            MIN_CONFIDENCE_HISTORY
                         ),
 
                         "enough_history_bets": (
-                            enough_bets
+                            metrics[
+                                "n_bet_days"
+                            ]
+                            >= MIN_HISTORY_BETS
                         ),
 
                         **metrics,
@@ -1539,12 +1557,9 @@ def evaluate_history_configs(
                 )
 
 
-    history_configs = pd.DataFrame(
+    return pd.DataFrame(
         records
     )
-
-
-    return history_configs
 
 
 # ============================================================
@@ -1554,20 +1569,6 @@ def evaluate_history_configs(
 def select_history_config(
     history_configs,
 ):
-    """
-    Primary selection:
-
-        maximize:
-            Wilson lower - break-even
-
-    subject to:
-        n_history_bets >= MIN_HISTORY_BETS
-
-    Tie-break:
-        lower p_break_even
-        higher ROI
-        more bets
-    """
 
     eligible = (
         history_configs.loc[
@@ -1578,24 +1579,15 @@ def select_history_config(
         .copy()
     )
 
-
     fallback = False
 
 
     if eligible.empty:
 
-        print(
-            "WARNING: không config nào "
-            "đủ MIN_HISTORY_BETS. "
-            "Fallback."
-        )
-
-
         eligible = (
             history_configs
             .copy()
         )
-
 
         fallback = True
 
@@ -1644,7 +1636,50 @@ def select_history_config(
 
 
 # ============================================================
-# APPLY SELECTED CONFIG TO FUTURE
+# GET Q HISTORY BEFORE FUTURE
+# ============================================================
+
+def get_initial_future_q_history(
+    prepared,
+    m,
+    history_folds,
+):
+
+    topm = (
+        build_topm_data(
+            prepared,
+            m,
+        )
+    )
+
+
+    history = (
+        topm.loc[
+            topm[
+                "fold"
+            ]
+            .isin(
+                history_folds
+            )
+        ]
+        .sort_values(
+            "date"
+        )
+    )
+
+
+    return (
+        history[
+            "q_m"
+        ]
+        .to_numpy(
+            dtype=float
+        )
+    )
+
+
+# ============================================================
+# FUTURE DEPLOYMENT
 # ============================================================
 
 def evaluate_future(
@@ -1658,13 +1693,11 @@ def evaluate_future(
         ]
     )
 
-
     m = int(
         selected[
             "m"
         ]
     )
-
 
     target_rate = float(
         selected[
@@ -1672,25 +1705,21 @@ def evaluate_future(
         ]
     )
 
-
-    threshold = float(
-        selected[
-            "threshold"
-        ]
-    )
-
-
-    tie_acceptance_rate = float(
-        selected[
-            "tie_acceptance_rate"
-        ]
-    )
-
-
     future_fold = (
         selected[
             "future_fold"
         ]
+    )
+
+    history_folds = (
+        str(
+            selected[
+                "history_folds"
+            ]
+        )
+        .split(
+            "+"
+        )
     )
 
 
@@ -1728,48 +1757,58 @@ def evaluate_future(
     )
 
 
-    seed = (
-        build_seed(
-            model_key=(
-                model_key
-            ),
+    # ========================================================
+    # INITIAL q HISTORY
+    #
+    # Chỉ q từ các past folds.
+    # ========================================================
 
-            fold_label=(
-                future_fold
+    initial_q = (
+        get_initial_future_q_history(
+            prepared=(
+                prepared
             ),
 
             m=(
                 m
             ),
 
-            target_rate=(
-                target_rate
+            history_folds=(
+                history_folds
             ),
         )
     )
 
 
-    future_bet = (
-        apply_confidence_rule(
-            q_values=(
-                future[
-                    "q_m"
-                ]
-                .to_numpy()
+    adaptive = (
+        run_adaptive_rule(
+            df=(
+                future
             ),
 
-            threshold=(
-                threshold
+            target_rate=(
+                target_rate
             ),
 
-            tie_acceptance_rate=(
-                tie_acceptance_rate
+            initial_q_history=(
+                initial_q
             ),
 
-            seed=(
-                seed
+            seed_label=(
+                f"future|"
+                f"{future_fold}|"
+                f"{model_key}|"
+                f"{m}|"
+                f"{target_rate}"
             ),
         )
+    )
+
+
+    bet = (
+        adaptive[
+            "bet"
+        ]
     )
 
 
@@ -1780,7 +1819,7 @@ def evaluate_future(
             ),
 
             bet=(
-                future_bet
+                bet
             ),
 
             m=(
@@ -1791,13 +1830,49 @@ def evaluate_future(
 
 
     # ========================================================
-    # DAILY
+    # DAILY OUTPUT
     # ========================================================
 
     future[
         "bet"
     ] = (
-        future_bet
+        bet
+    )
+
+
+    future[
+        "adaptive_threshold"
+    ] = (
+        adaptive[
+            "threshold"
+        ]
+    )
+
+
+    future[
+        "confidence_history_size"
+    ] = (
+        adaptive[
+            "history_size"
+        ]
+    )
+
+
+    future[
+        "confidence_history_range"
+    ] = (
+        adaptive[
+            "history_range"
+        ]
+    )
+
+
+    future[
+        "adaptive_status"
+    ] = (
+        adaptive[
+            "status"
+        ]
     )
 
 
@@ -1818,11 +1893,9 @@ def evaluate_future(
         future[
             "bet"
         ]
-
         * future[
             "hit"
         ]
-
         * PAYOUT_IF_HIT
     )
 
@@ -1870,23 +1943,34 @@ def evaluate_future(
     )
 
 
-    future[
-        "selected_threshold"
-    ] = (
-        threshold
+    # ========================================================
+    # DIAGNOSTICS
+    # ========================================================
+
+    status_counts = (
+        future[
+            "adaptive_status"
+        ]
+        .value_counts()
+        .to_dict()
     )
 
 
-    future[
-        "selected_tie_acceptance_rate"
-    ] = (
-        tie_acceptance_rate
+    constant_days = int(
+        status_counts.get(
+            "constant_confidence",
+            0,
+        )
     )
 
 
-    # ========================================================
-    # RESULT
-    # ========================================================
+    warmup_days = int(
+        status_counts.get(
+            "warmup",
+            0,
+        )
+    )
+
 
     result = {
         "future_fold": (
@@ -1909,14 +1993,6 @@ def evaluate_future(
 
         "selected_target_rate": (
             target_rate
-        ),
-
-        "selected_threshold": (
-            threshold
-        ),
-
-        "selected_tie_acceptance_rate": (
-            tie_acceptance_rate
         ),
 
         "history_selection_score": (
@@ -1955,16 +2031,18 @@ def evaluate_future(
             ]
         ),
 
-        "history_p_break_even": (
-            selected[
-                "p_break_even_raw"
-            ]
-        ),
-
         "history_roi": (
             selected[
                 "roi"
             ]
+        ),
+
+        "future_constant_confidence_days": (
+            constant_days
+        ),
+
+        "future_warmup_days": (
+            warmup_days
         ),
 
         **{
@@ -1980,36 +2058,20 @@ def evaluate_future(
 
     return (
         result,
-        future,
+        future
     )
 
 
 # ============================================================
-# AGGREGATE SUMMARY
+# SUMMARY
 # ============================================================
 
 def build_summary(
-    test_results,
+    results,
 ):
-    """
-    Aggregate chỉ là supplemental.
-
-    Luôn phải đọc từng future fold riêng.
-
-    Nếu một fold = 0 bets,
-    aggregate ROI có thể che mất inactivity.
-    """
-
-    total_future_days = int(
-        test_results[
-            "future_n_days"
-        ]
-        .sum()
-    )
-
 
     total_bets = int(
-        test_results[
+        results[
             "future_n_bet_days"
         ]
         .sum()
@@ -2017,7 +2079,7 @@ def build_summary(
 
 
     total_hits = int(
-        test_results[
+        results[
             "future_number_hits"
         ]
         .sum()
@@ -2025,7 +2087,7 @@ def build_summary(
 
 
     total_cost = float(
-        test_results[
+        results[
             "future_total_cost"
         ]
         .sum()
@@ -2033,7 +2095,7 @@ def build_summary(
 
 
     total_revenue = float(
-        test_results[
+        results[
             "future_total_revenue"
         ]
         .sum()
@@ -2055,7 +2117,7 @@ def build_summary(
 
 
     active_folds = int(
-        test_results[
+        results[
             "future_n_bet_days"
         ]
         .gt(
@@ -2065,27 +2127,16 @@ def build_summary(
     )
 
 
-    inactive_folds = int(
-        test_results[
-            "future_n_bet_days"
-        ]
-        .eq(
-            0
-        )
-        .sum()
-    )
-
-
-    positive_active_folds = int(
+    positive_folds = int(
         (
-            test_results[
+            results[
                 "future_n_bet_days"
             ]
             .gt(
                 0
             )
 
-            & test_results[
+            & results[
                 "future_roi"
             ]
             .gt(
@@ -2096,16 +2147,16 @@ def build_summary(
     )
 
 
-    negative_active_folds = int(
+    negative_folds = int(
         (
-            test_results[
+            results[
                 "future_n_bet_days"
             ]
             .gt(
                 0
             )
 
-            & test_results[
+            & results[
                 "future_roi"
             ]
             .lt(
@@ -2121,7 +2172,7 @@ def build_summary(
             {
                 "n_future_folds": (
                     len(
-                        test_results
+                        results
                     )
                 ),
 
@@ -2130,19 +2181,18 @@ def build_summary(
                 ),
 
                 "inactive_future_folds": (
-                    inactive_folds
+                    len(
+                        results
+                    )
+                    - active_folds
                 ),
 
                 "positive_active_folds": (
-                    positive_active_folds
+                    positive_folds
                 ),
 
                 "negative_active_folds": (
-                    negative_active_folds
-                ),
-
-                "total_future_days": (
-                    total_future_days
+                    negative_folds
                 ),
 
                 "total_bets": (
@@ -2169,8 +2219,8 @@ def build_summary(
                     aggregate_roi
                 ),
 
-                "aggregate_roi_warning": (
-                    "Do not interpret alone; "
+                "note": (
+                    "Aggregate ROI is secondary; "
                     "inspect each future fold."
                 ),
             }
@@ -2187,7 +2237,7 @@ def print_selection(
 ):
 
     print(
-        "\nSELECTED FROM HISTORY"
+        "\nSELECTED ADAPTIVE STRATEGY"
     )
 
 
@@ -2196,66 +2246,55 @@ def print_selection(
         f"{selected['future_fold']}"
     )
 
-
     print(
         f"  History folds     : "
         f"{selected['history_folds']}"
     )
-
 
     print(
         f"  Model             : "
         f"{selected['model']}"
     )
 
-
     print(
         f"  m                 : "
         f"{int(selected['m'])}"
     )
-
 
     print(
         f"  target rate       : "
         f"{selected['target_participation_rate']:.0%}"
     )
 
-
     print(
         f"  history bets      : "
         f"{int(selected['n_bet_days'])}"
     )
-
 
     print(
         f"  history hits      : "
         f"{int(selected['number_hits'])}"
     )
 
-
     print(
         f"  history hit rate  : "
         f"{selected['hit_rate']:.4%}"
     )
-
 
     print(
         f"  break-even        : "
         f"{selected['break_even_hit_rate']:.4%}"
     )
 
-
     print(
         f"  Wilson lower      : "
         f"{selected['wilson_lower']:.4%}"
     )
 
-
     print(
         f"  selection score   : "
         f"{selected['selection_score']:+.6f}"
     )
-
 
     print(
         f"  history ROI       : "
@@ -2263,48 +2302,42 @@ def print_selection(
     )
 
 
-    print(
-        f"  threshold         : "
-        f"{selected['threshold']:.8f}"
-    )
-
-
 # ============================================================
 # PRINT FUTURE
 # ============================================================
 
-def print_future_result(
+def print_future(
     result,
 ):
 
     print(
-        "\nFUTURE RESULT"
+        "\nADAPTIVE FUTURE RESULT"
     )
-
 
     print(
         f"  Fold              : "
         f"{result['future_fold']}"
     )
 
-
     print(
         f"  Days              : "
         f"{result['future_n_days']:,}"
     )
-
 
     print(
         f"  Bets              : "
         f"{result['future_n_bet_days']:,}"
     )
 
-
     print(
         f"  Participation     : "
         f"{result['future_participation_rate']:.2%}"
     )
 
+    print(
+        f"  Constant conf days: "
+        f"{result['future_constant_confidence_days']:,}"
+    )
 
     print(
         f"  Hits              : "
@@ -2324,24 +2357,20 @@ def print_future_result(
             f"{result['future_hit_rate']:.4%}"
         )
 
-
         print(
             f"  Break-even        : "
             f"{result['future_break_even_hit_rate']:.4%}"
         )
-
 
         print(
             f"  Wilson lower      : "
             f"{result['future_wilson_lower']:.4%}"
         )
 
-
         print(
             f"  Profit            : "
             f"{result['future_total_profit']:,.0f}"
         )
-
 
         print(
             f"  ROI               : "
@@ -2352,7 +2381,7 @@ def print_future_result(
 
         print(
             "  STATUS            : "
-            "NO BETS / STRATEGY INACTIVE"
+            "NO BETS"
         )
 
 
@@ -2368,34 +2397,33 @@ def main():
     )
 
 
-    # ========================================================
-    # LOAD
-    # ========================================================
-
     predictions = (
         load_predictions()
     )
 
 
     print(
-        "\nModels:"
+        "\nAdaptive config:"
+    )
+
+    print(
+        f"  Window            : "
+        f"{ADAPTIVE_WINDOW}"
+    )
+
+    print(
+        f"  Min q history     : "
+        f"{MIN_CONFIDENCE_HISTORY}"
+    )
+
+    print(
+        f"  Dispersion tol    : "
+        f"{DISPERSION_TOLERANCE}"
     )
 
 
-    for model in (
-        predictions[
-            "model_key"
-        ]
-        .drop_duplicates()
-    ):
-
-        print(
-            f"  - {model}"
-        )
-
-
     # ========================================================
-    # PREPARE ALL MODELS ONCE
+    # PREPARE
     # ========================================================
 
     prepared_models = {}
@@ -2414,7 +2442,6 @@ def main():
             f"{model_key}"
         )
 
-
         prepared_models[
             model_key
         ] = (
@@ -2425,14 +2452,14 @@ def main():
 
 
     # ========================================================
-    # OUTER WALK FORWARD
+    # NESTED
     # ========================================================
 
     selection_records = []
 
-    history_config_frames = []
+    history_frames = []
 
-    test_records = []
+    future_records = []
 
     daily_frames = []
 
@@ -2444,7 +2471,6 @@ def main():
                 "test_fold"
             ]
         )
-
 
         history_folds = (
             outer[
@@ -2458,27 +2484,20 @@ def main():
             + "=" * 110
         )
 
-
         print(
             f"FUTURE: "
             f"{future_fold}"
         )
-
 
         print(
             f"HISTORY: "
             f"{history_folds}"
         )
 
-
         print(
             "=" * 110
         )
 
-
-        # ====================================================
-        # SEARCH HISTORY
-        # ====================================================
 
         history_configs = (
             evaluate_history_configs(
@@ -2497,14 +2516,10 @@ def main():
         )
 
 
-        history_config_frames.append(
+        history_frames.append(
             history_configs
         )
 
-
-        # ====================================================
-        # SELECT ONE
-        # ====================================================
 
         selected = (
             select_history_config(
@@ -2523,12 +2538,8 @@ def main():
         )
 
 
-        # ====================================================
-        # FUTURE
-        # ====================================================
-
         (
-            future_result,
+            result,
             future_daily,
         ) = (
             evaluate_future(
@@ -2543,13 +2554,13 @@ def main():
         )
 
 
-        print_future_result(
-            future_result
+        print_future(
+            result
         )
 
 
-        test_records.append(
-            future_result
+        future_records.append(
+            result
         )
 
 
@@ -2559,7 +2570,7 @@ def main():
 
 
     # ========================================================
-    # COMBINE
+    # OUTPUT DATAFRAMES
     # ========================================================
 
     selection_df = pd.DataFrame(
@@ -2567,55 +2578,49 @@ def main():
     )
 
 
-    history_configs_df = (
-        pd.concat(
-            history_config_frames,
-            ignore_index=True,
-        )
+    history_df = pd.concat(
+        history_frames,
+        ignore_index=True,
     )
 
 
-    test_results_df = pd.DataFrame(
-        test_records
+    future_df = pd.DataFrame(
+        future_records
     )
 
 
-    daily_df = (
-        pd.concat(
-            daily_frames,
-            ignore_index=True,
-        )
+    daily_df = pd.concat(
+        daily_frames,
+        ignore_index=True,
     )
 
 
     summary_df = (
         build_summary(
-            test_results_df
+            future_df
         )
     )
 
 
     # ========================================================
-    # PRINT FINAL
+    # PRINT
     # ========================================================
 
     print(
         "\n"
-        + "=" * 160
+        + "=" * 180
     )
-
 
     print(
-        "NESTED WALK-FORWARD FUTURE RESULTS"
+        "ADAPTIVE NESTED WALK-FORWARD RESULTS"
     )
-
 
     print(
-        "=" * 160
+        "=" * 180
     )
 
 
-    display_columns = [
+    columns = [
         "future_fold",
         "selected_model",
         "selected_m",
@@ -2624,6 +2629,7 @@ def main():
         "history_roi",
         "future_n_bet_days",
         "future_participation_rate",
+        "future_constant_confidence_days",
         "future_number_hits",
         "future_hit_rate",
         "future_break_even_hit_rate",
@@ -2633,8 +2639,8 @@ def main():
 
 
     print(
-        test_results_df[
-            display_columns
+        future_df[
+            columns
         ]
         .to_string(
             index=False,
@@ -2691,16 +2697,13 @@ def main():
         + "=" * 100
     )
 
-
     print(
-        "AGGREGATE - READ WITH CAUTION"
+        "ADAPTIVE AGGREGATE - READ WITH CAUTION"
     )
-
 
     print(
         "=" * 100
     )
-
 
     print(
         summary_df.to_string(
@@ -2720,14 +2723,14 @@ def main():
     )
 
 
-    history_configs_df.to_csv(
+    history_df.to_csv(
         OUTPUT_HISTORY_CONFIGS,
         index=False,
         encoding="utf-8-sig",
     )
 
 
-    test_results_df.to_csv(
+    future_df.to_csv(
         OUTPUT_TEST_RESULTS,
         index=False,
         encoding="utf-8-sig",
@@ -2752,26 +2755,21 @@ def main():
         "\nĐã lưu:"
     )
 
-
     print(
         OUTPUT_SELECTION
     )
-
 
     print(
         OUTPUT_HISTORY_CONFIGS
     )
 
-
     print(
         OUTPUT_TEST_RESULTS
     )
 
-
     print(
         OUTPUT_TEST_DAILY
     )
-
 
     print(
         OUTPUT_SUMMARY

@@ -4,28 +4,39 @@
 Phân tích Strategy 15 theo thời gian.
 
 Mục tiêu
--------
-1. Sau bao nhiêu lần đặt cược thì cumulative P/L lần đầu > 0?
-2. Sau bao nhiêu ngày lịch thì cumulative P/L lần đầu > 0?
-3. Từ thời điểm nào cumulative P/L dương bền vững?
-4. Nếu chơi trong H ngày lịch:
-       H = 30, 60, 90, 180, 365
-   thì:
-       - mean ROI
-       - median ROI
-       - tỷ lệ window có lãi
-       - best / worst ROI
-5. Nếu chơi liên tục H lần cược:
-       H = 10, 20, 30, 50, 100, 180, 365
-   thì hiệu quả như thế nào?
-6. Horizon nào cho kết quả ổn định nhất?
+--------
+1. Sau bao nhiêu evaluation days cumulative P/L lần đầu > 0?
+2. Sau bao nhiêu bet days cumulative P/L lần đầu > 0?
+3. Sau bao nhiêu calendar days cumulative P/L lần đầu > 0?
+4. Từ thời điểm nào cumulative P/L dương bền vững?
+5. Hiệu quả trên rolling calendar horizons:
+       30, 60, 90, 180, 365 ngày
+6. Hiệu quả trên rolling bet horizons:
+       10, 20, 30, 50, 100, 180, 365 bets
 
-Lưu ý
------
-- Phân tích theo từng fold riêng để rolling window không đi xuyên
-  qua các giai đoạn test khác nhau.
-- "Best horizon" chỉ là descriptive / observed.
-  Không được coi là horizon đã xác nhận out-of-sample.
+Quan trọng
+----------
+evaluation day:
+    một row thực sự thuộc test set của Strategy 15.
+
+bet day:
+    một evaluation day mà bet = 1.
+
+calendar day:
+    chênh lệch ngày lịch.
+
+Do Strategy 15 đánh giá nhiều fold khác nhau,
+calendar days có thể chứa gap lớn giữa các fold.
+
+Vì vậy:
+    eval_day và bet_day
+là hai metric chính để diễn giải time-to-profit.
+
+Rolling windows luôn chạy trong từng fold riêng,
+không bao giờ đi xuyên qua boundary fold.
+
+Best horizon chỉ descriptive / post-hoc.
+Không phải validated future horizon.
 """
 
 from pathlib import Path
@@ -46,20 +57,16 @@ STRATEGY_DIR = (
     / "strategies"
 )
 
+
 INPUT_DAILY = (
     STRATEGY_DIR
     / "selective_topm_daily.csv"
 )
 
-INPUT_SUMMARY = (
-    STRATEGY_DIR
-    / "selective_topm_summary.csv"
-)
 
-
-# ------------------------------------------------------------
-# Rolling calendar horizons
-# ------------------------------------------------------------
+# ============================================================
+# HORIZONS
+# ============================================================
 
 CALENDAR_HORIZONS = [
     30,
@@ -69,10 +76,6 @@ CALENDAR_HORIZONS = [
     365,
 ]
 
-
-# ------------------------------------------------------------
-# Rolling bet horizons
-# ------------------------------------------------------------
 
 BET_HORIZONS = [
     10,
@@ -85,39 +88,65 @@ BET_HORIZONS = [
 ]
 
 
-# Ít nhất bao nhiêu rolling windows thì mới xét
-# là một horizon đủ dữ liệu để gọi "best".
 MIN_WINDOWS_FOR_BEST = 10
 
 
 # ------------------------------------------------------------
-# Output
+# Window-level file trước đây có thể >500 MB.
+#
+# False:
+#     chỉ lưu summary / best.
+#
+# True:
+#     lưu cả từng rolling window.
 # ------------------------------------------------------------
+
+SAVE_WINDOW_LEVEL = False
+
+
+# ============================================================
+# OUTPUT
+# ============================================================
 
 OUTPUT_FIRST_POSITIVE = (
     STRATEGY_DIR
     / "profit_horizon_first_positive.csv"
 )
 
+
 OUTPUT_WINDOWS = (
     STRATEGY_DIR
     / "profit_horizon_windows.csv"
 )
+
 
 OUTPUT_SUMMARY = (
     STRATEGY_DIR
     / "profit_horizon_summary.csv"
 )
 
-OUTPUT_BEST_HORIZON = (
+
+OUTPUT_BEST_CONFIG = (
     STRATEGY_DIR
     / "profit_horizon_best_by_config.csv"
 )
+
 
 OUTPUT_BEST_OVERALL = (
     STRATEGY_DIR
     / "profit_horizon_best_overall.csv"
 )
+
+
+# ============================================================
+# CONFIG COLUMNS
+# ============================================================
+
+CONFIG_COLUMNS = [
+    "model",
+    "m",
+    "target_participation_rate",
+]
 
 
 # ============================================================
@@ -130,26 +159,20 @@ def load_data():
 
         raise FileNotFoundError(
             f"Không tìm thấy:\n"
-            f"{INPUT_DAILY}"
+            f"{INPUT_DAILY}\n\n"
+            "Hãy chạy Strategy 15 trước."
         )
 
-    if not INPUT_SUMMARY.exists():
-
-        raise FileNotFoundError(
-            f"Không tìm thấy:\n"
-            f"{INPUT_SUMMARY}"
-        )
 
     daily = pd.read_csv(
         INPUT_DAILY,
-        parse_dates=["date"],
+        parse_dates=[
+            "date"
+        ],
     )
 
-    summary = pd.read_csv(
-        INPUT_SUMMARY,
-    )
 
-    required_daily = [
+    required = [
         "date",
         "fold",
         "model",
@@ -162,12 +185,13 @@ def load_data():
         "profit",
     ]
 
+
     missing = [
         column
-        for column
-        in required_daily
+        for column in required
         if column not in daily.columns
     ]
+
 
     if missing:
 
@@ -175,6 +199,7 @@ def load_data():
             "selective_topm_daily.csv thiếu:\n"
             f"{missing}"
         )
+
 
     daily[
         "target_participation_rate"
@@ -186,35 +211,53 @@ def load_data():
         .round(10)
     )
 
-    summary[
-        "target_participation_rate"
+
+    daily[
+        "m"
     ] = (
-        summary[
-            "target_participation_rate"
+        daily[
+            "m"
         ]
-        .astype(float)
-        .round(10)
-    )
-
-    daily["m"] = (
-        daily["m"]
         .astype(int)
     )
 
-    daily["bet"] = (
-        daily["bet"]
+
+    daily[
+        "bet"
+    ] = (
+        daily[
+            "bet"
+        ]
         .astype(int)
     )
 
-    daily["hit_if_bet"] = (
-        daily["hit_if_bet"]
+
+    daily[
+        "hit_if_bet"
+    ] = (
+        daily[
+            "hit_if_bet"
+        ]
         .astype(int)
     )
 
-    return (
-        daily,
-        summary,
+
+    daily = (
+        daily
+        .sort_values(
+            CONFIG_COLUMNS
+            + [
+                "date",
+                "fold",
+            ]
+        )
+        .reset_index(
+            drop=True
+        )
     )
+
+
+    return daily
 
 
 # ============================================================
@@ -249,32 +292,25 @@ def safe_hit_rate(
     )
 
 
-def get_config_columns():
-
-    return [
-        "model",
-        "m",
-        "target_participation_rate",
-    ]
-
-
 # ============================================================
-# FIRST POSITIVE / STABLE POSITIVE
+# FIRST / STABLE POSITIVE
 # ============================================================
 
 def first_positive_analysis(
-    config_df: pd.DataFrame,
-) -> dict:
-
+    config_df,
+):
     """
-    Phân tích cumulative P/L của một config
-    trên toàn bộ test timeline.
+    Phân tích toàn bộ observed test timeline
+    của một config.
 
-    Tính:
-        - first positive bet
-        - first positive calendar date
-        - stable positive bet
-        - stable positive calendar date
+    Metric chính:
+        first_positive_eval_day
+        stable_positive_eval_day
+
+        first_positive_bet_day
+        stable_positive_bet_day
+
+    Calendar metric chỉ là phụ.
     """
 
     config_df = (
@@ -291,28 +327,44 @@ def first_positive_analysis(
         .copy()
     )
 
+
     model = (
         config_df[
             "model"
-        ].iloc[0]
+        ]
+        .iloc[0]
     )
+
 
     m = int(
         config_df[
             "m"
-        ].iloc[0]
+        ]
+        .iloc[0]
     )
 
-    r = float(
+
+    target_rate = float(
         config_df[
             "target_participation_rate"
-        ].iloc[0]
+        ]
+        .iloc[0]
     )
 
 
     # ========================================================
-    # CALENDAR TIMELINE
+    # EVALUATION TIMELINE
     # ========================================================
+
+    config_df[
+        "eval_day"
+    ] = np.arange(
+        1,
+        len(
+            config_df
+        ) + 1,
+    )
+
 
     config_df[
         "cum_profit"
@@ -322,6 +374,7 @@ def first_positive_analysis(
         ]
         .cumsum()
     )
+
 
     config_df[
         "cum_bets"
@@ -333,60 +386,6 @@ def first_positive_analysis(
     )
 
 
-    positive_calendar = (
-        config_df[
-            "cum_profit"
-        ]
-        > 0
-    )
-
-
-    # --------------------------------------------------------
-    # First calendar date positive
-    # --------------------------------------------------------
-
-    if positive_calendar.any():
-
-        first_calendar_idx = (
-            np.flatnonzero(
-                positive_calendar
-                .to_numpy()
-            )[0]
-        )
-
-        first_positive_calendar_date = (
-            config_df.loc[
-                first_calendar_idx,
-                "date",
-            ]
-        )
-
-        first_positive_calendar_days = (
-            first_positive_calendar_date
-            - config_df[
-                "date"
-            ].iloc[0]
-        ).days + 1
-
-    else:
-
-        first_positive_calendar_date = (
-            pd.NaT
-        )
-
-        first_positive_calendar_days = (
-            np.nan
-        )
-
-
-    # --------------------------------------------------------
-    # Stable positive calendar date
-    #
-    # earliest t such that:
-    # cumulative profit[t] > 0
-    # AND all future cumulative profit > 0
-    # --------------------------------------------------------
-
     cumulative_profit = (
         config_df[
             "cum_profit"
@@ -395,6 +394,73 @@ def first_positive_analysis(
             dtype=float
         )
     )
+
+
+    positive = (
+        cumulative_profit
+        > 0
+    )
+
+
+    # ========================================================
+    # FIRST POSITIVE EVAL DAY
+    # ========================================================
+
+    if positive.any():
+
+        idx = (
+            np.flatnonzero(
+                positive
+            )[0]
+        )
+
+
+        first_positive_eval_day = int(
+            config_df.loc[
+                idx,
+                "eval_day",
+            ]
+        )
+
+
+        first_positive_eval_date = (
+            config_df.loc[
+                idx,
+                "date",
+            ]
+        )
+
+
+        first_positive_calendar_days = (
+            first_positive_eval_date
+            - config_df[
+                "date"
+            ]
+            .iloc[0]
+        ).days + 1
+
+    else:
+
+        first_positive_eval_day = (
+            np.nan
+        )
+
+        first_positive_eval_date = (
+            pd.NaT
+        )
+
+        first_positive_calendar_days = (
+            np.nan
+        )
+
+
+    # ========================================================
+    # STABLE POSITIVE EVAL DAY
+    #
+    # earliest t such that:
+    #    cumulative_profit[s] > 0
+    # for all s >= t
+    # ========================================================
 
     if len(
         cumulative_profit
@@ -410,6 +476,7 @@ def first_positive_analysis(
             ]
         )
 
+
         stable_mask = (
             future_min
             > 0
@@ -417,39 +484,52 @@ def first_positive_analysis(
 
     else:
 
-        stable_mask = (
-            np.array(
-                [],
-                dtype=bool,
-            )
+        stable_mask = np.array(
+            [],
+            dtype=bool,
         )
 
 
     if stable_mask.any():
 
-        stable_calendar_idx = (
+        idx = (
             np.flatnonzero(
                 stable_mask
             )[0]
         )
 
-        stable_positive_calendar_date = (
+
+        stable_positive_eval_day = int(
             config_df.loc[
-                stable_calendar_idx,
+                idx,
+                "eval_day",
+            ]
+        )
+
+
+        stable_positive_eval_date = (
+            config_df.loc[
+                idx,
                 "date",
             ]
         )
 
+
         stable_positive_calendar_days = (
-            stable_positive_calendar_date
+            stable_positive_eval_date
             - config_df[
                 "date"
-            ].iloc[0]
+            ]
+            .iloc[0]
         ).days + 1
 
     else:
 
-        stable_positive_calendar_date = (
+        stable_positive_eval_day = (
+            np.nan
+        )
+
+        stable_positive_eval_date = (
             pd.NaT
         )
 
@@ -466,7 +546,10 @@ def first_positive_analysis(
         config_df.loc[
             config_df[
                 "bet"
-            ].eq(1)
+            ]
+            .eq(
+                1
+            )
         ]
         .copy()
         .reset_index(
@@ -483,16 +566,15 @@ def first_positive_analysis(
     if n_bets > 0:
 
         bets[
-            "bet_number"
-        ] = (
-            np.arange(
-                1,
-                n_bets + 1,
-            )
+            "bet_day"
+        ] = np.arange(
+            1,
+            n_bets + 1,
         )
 
+
         bets[
-            "cum_profit"
+            "cum_profit_bet"
         ] = (
             bets[
                 "profit"
@@ -501,36 +583,46 @@ def first_positive_analysis(
         )
 
 
-        # ----------------------------------------------------
-        # First positive bet
-        # ----------------------------------------------------
+        bet_cumulative_profit = (
+            bets[
+                "cum_profit_bet"
+            ]
+            .to_numpy(
+                dtype=float
+            )
+        )
+
+
+        # ====================================================
+        # FIRST POSITIVE BET
+        # ====================================================
 
         positive_bet = (
-            bets[
-                "cum_profit"
-            ]
+            bet_cumulative_profit
             > 0
         )
 
+
         if positive_bet.any():
 
-            first_bet_idx = (
+            idx = (
                 np.flatnonzero(
                     positive_bet
-                    .to_numpy()
                 )[0]
             )
 
+
             first_positive_bet_day = int(
                 bets.loc[
-                    first_bet_idx,
-                    "bet_number",
+                    idx,
+                    "bet_day",
                 ]
             )
 
+
             first_positive_bet_date = (
                 bets.loc[
-                    first_bet_idx,
+                    idx,
                     "date",
                 ]
             )
@@ -546,22 +638,13 @@ def first_positive_analysis(
             )
 
 
-        # ----------------------------------------------------
-        # Stable positive bet
-        # ----------------------------------------------------
-
-        bet_cum_profit = (
-            bets[
-                "cum_profit"
-            ]
-            .to_numpy(
-                dtype=float
-            )
-        )
+        # ====================================================
+        # STABLE POSITIVE BET
+        # ====================================================
 
         future_min_bet = (
             np.minimum.accumulate(
-                bet_cum_profit[
+                bet_cumulative_profit[
                     ::-1
                 ]
             )[
@@ -569,29 +652,33 @@ def first_positive_analysis(
             ]
         )
 
+
         stable_bet_mask = (
             future_min_bet
             > 0
         )
 
+
         if stable_bet_mask.any():
 
-            stable_bet_idx = (
+            idx = (
                 np.flatnonzero(
                     stable_bet_mask
                 )[0]
             )
 
+
             stable_positive_bet_day = int(
                 bets.loc[
-                    stable_bet_idx,
-                    "bet_number",
+                    idx,
+                    "bet_day",
                 ]
             )
 
+
             stable_positive_bet_date = (
                 bets.loc[
-                    stable_bet_idx,
+                    idx,
                     "date",
                 ]
             )
@@ -632,26 +719,32 @@ def first_positive_analysis(
     total_cost = float(
         config_df[
             "cost"
-        ].sum()
+        ]
+        .sum()
     )
+
 
     total_profit = float(
         config_df[
             "profit"
-        ].sum()
+        ]
+        .sum()
     )
+
 
     total_hits = int(
         (
             config_df[
                 "bet"
             ]
+
             * config_df[
                 "hit_if_bet"
             ]
         )
         .sum()
     )
+
 
     final_roi = (
         safe_roi(
@@ -671,19 +764,21 @@ def first_positive_analysis(
         ),
 
         "target_participation_rate": (
-            r
+            target_rate
         ),
 
         "first_date": (
             config_df[
                 "date"
-            ].min()
+            ]
+            .min()
         ),
 
         "last_date": (
             config_df[
                 "date"
-            ].max()
+            ]
+            .max()
         ),
 
         "n_eval_days": (
@@ -698,6 +793,22 @@ def first_positive_analysis(
 
         "number_hits": (
             total_hits
+        ),
+
+        "first_positive_eval_day": (
+            first_positive_eval_day
+        ),
+
+        "first_positive_eval_date": (
+            first_positive_eval_date
+        ),
+
+        "stable_positive_eval_day": (
+            stable_positive_eval_day
+        ),
+
+        "stable_positive_eval_date": (
+            stable_positive_eval_date
         ),
 
         "first_positive_bet_day": (
@@ -720,16 +831,8 @@ def first_positive_analysis(
             first_positive_calendar_days
         ),
 
-        "first_positive_calendar_date": (
-            first_positive_calendar_date
-        ),
-
         "stable_positive_calendar_days": (
             stable_positive_calendar_days
-        ),
-
-        "stable_positive_calendar_date": (
-            stable_positive_calendar_date
         ),
 
         "total_cost": (
@@ -747,18 +850,48 @@ def first_positive_analysis(
 
 
 # ============================================================
+# PREFIX SUM
+# ============================================================
+
+def prefix_sum(
+    values,
+):
+
+    values = np.asarray(
+        values
+    )
+
+
+    return np.concatenate(
+        [
+            np.array(
+                [
+                    0
+                ],
+                dtype=values.dtype,
+            ),
+            np.cumsum(
+                values
+            ),
+        ]
+    )
+
+
+# ============================================================
 # CALENDAR WINDOWS
 # ============================================================
 
 def build_calendar_windows(
-    fold_df: pd.DataFrame,
-    horizon_days: int,
-) -> list:
-
+    fold_df,
+    horizon_days,
+):
     """
-    Rolling H calendar-day windows.
+    Rolling calendar windows trong MỘT fold.
 
-    Chỉ chạy bên trong cùng một fold.
+    Window:
+        [start_date, start_date + H - 1 days]
+
+    Chỉ giữ window có ít nhất một evaluation row.
     """
 
     fold_df = (
@@ -772,10 +905,8 @@ def build_calendar_windows(
         .copy()
     )
 
-    if len(
-        fold_df
-    ) == 0:
 
+    if fold_df.empty:
         return []
 
 
@@ -788,7 +919,8 @@ def build_calendar_windows(
         )
     )
 
-    costs = (
+
+    cost = (
         fold_df[
             "cost"
         ]
@@ -797,7 +929,8 @@ def build_calendar_windows(
         )
     )
 
-    profits = (
+
+    profit = (
         fold_df[
             "profit"
         ]
@@ -806,7 +939,8 @@ def build_calendar_windows(
         )
     )
 
-    bets = (
+
+    bet = (
         fold_df[
             "bet"
         ]
@@ -815,11 +949,13 @@ def build_calendar_windows(
         )
     )
 
-    hits = (
+
+    hit = (
         (
             fold_df[
                 "bet"
             ]
+
             * fold_df[
                 "hit_if_bet"
             ]
@@ -830,66 +966,54 @@ def build_calendar_windows(
     )
 
 
-    # Prefix sums
-    prefix_cost = np.concatenate(
-        [
-            [0.0],
-            np.cumsum(
-                costs
-            ),
-        ]
+    prefix_cost = (
+        prefix_sum(
+            cost
+        )
     )
 
-    prefix_profit = np.concatenate(
-        [
-            [0.0],
-            np.cumsum(
-                profits
-            ),
-        ]
+
+    prefix_profit = (
+        prefix_sum(
+            profit
+        )
     )
 
-    prefix_bets = np.concatenate(
-        [
-            [0],
-            np.cumsum(
-                bets
-            ),
-        ]
+
+    prefix_bet = (
+        prefix_sum(
+            bet
+        )
     )
 
-    prefix_hits = np.concatenate(
-        [
-            [0],
-            np.cumsum(
-                hits
-            ),
-        ]
+
+    prefix_hit = (
+        prefix_sum(
+            hit
+        )
     )
 
 
     records = []
 
-    start_idx = 0
 
-
-    for end_idx in range(
+    for start_idx in range(
         len(
             fold_df
         )
     ):
 
-        end_date = (
-            pd.Timestamp(
-                dates[
-                    end_idx
-                ]
-            )
+        start_date = (
+            fold_df.loc[
+                start_idx,
+                "date",
+            ]
         )
 
-        desired_start = (
-            end_date
-            - pd.Timedelta(
+
+        end_target = (
+            start_date
+            + pd.Timedelta(
                 days=(
                     horizon_days
                     - 1
@@ -898,73 +1022,66 @@ def build_calendar_windows(
         )
 
 
-        while (
-            start_idx
-            < end_idx
-            and pd.Timestamp(
-                dates[
-                    start_idx
-                ]
-            )
-            < desired_start
-        ):
-
-            start_idx += 1
-
-
-        actual_start_date = (
-            pd.Timestamp(
-                dates[
-                    start_idx
-                ]
+        end_idx_exclusive = (
+            np.searchsorted(
+                dates,
+                np.datetime64(
+                    end_target
+                ),
+                side="right",
             )
         )
 
 
-        actual_span = (
-            end_date
-            - actual_start_date
-        ).days + 1
-
-
-        # Chỉ giữ khi có đủ một horizon lịch đầy đủ.
-        if actual_span < horizon_days:
+        if (
+            end_idx_exclusive
+            <= start_idx
+        ):
 
             continue
 
 
-        total_cost = (
+        n_eval_days = (
+            end_idx_exclusive
+            - start_idx
+        )
+
+
+        total_cost = float(
             prefix_cost[
-                end_idx + 1
+                end_idx_exclusive
             ]
             - prefix_cost[
                 start_idx
             ]
         )
 
-        total_profit = (
+
+        total_profit = float(
             prefix_profit[
-                end_idx + 1
+                end_idx_exclusive
             ]
             - prefix_profit[
                 start_idx
             ]
         )
 
+
         n_bets = int(
-            prefix_bets[
-                end_idx + 1
+            prefix_bet[
+                end_idx_exclusive
             ]
-            - prefix_bets[
+            - prefix_bet[
                 start_idx
             ]
         )
 
+
         n_hits = int(
-            prefix_hits[
-                end_idx + 1
+            prefix_hit[
+                end_idx_exclusive
             ]
-            - prefix_hits[
+            - prefix_hit[
                 start_idx
             ]
         )
@@ -976,6 +1093,7 @@ def build_calendar_windows(
                 total_cost,
             )
         )
+
 
         hit_rate = (
             safe_hit_rate(
@@ -996,27 +1114,26 @@ def build_calendar_windows(
                 ),
 
                 "window_start": (
-                    actual_start_date
+                    start_date
                 ),
 
                 "window_end": (
-                    end_date
+                    fold_df.loc[
+                        end_idx_exclusive - 1,
+                        "date",
+                    ]
                 ),
 
-                "calendar_span_days": (
-                    actual_span
+                "n_eval_days": (
+                    n_eval_days
                 ),
 
-                "n_bet_days": (
+                "n_bets": (
                     n_bets
                 ),
 
-                "number_hits": (
+                "n_hits": (
                     n_hits
-                ),
-
-                "hit_rate": (
-                    hit_rate
                 ),
 
                 "total_cost": (
@@ -1031,11 +1148,19 @@ def build_calendar_windows(
                     roi
                 ),
 
-                "profitable": (
-                    int(
-                        total_profit
-                        > 0
-                    )
+                "hit_rate": (
+                    hit_rate
+                ),
+
+                "calendar_span_days": (
+                    (
+                        fold_df.loc[
+                            end_idx_exclusive - 1,
+                            "date",
+                        ]
+                        - start_date
+                    ).days
+                    + 1
                 ),
             }
         )
@@ -1049,22 +1174,23 @@ def build_calendar_windows(
 # ============================================================
 
 def build_bet_windows(
-    fold_df: pd.DataFrame,
-    horizon_bets: int,
-) -> list:
-
+    fold_df,
+    horizon_bets,
+):
     """
-    Rolling windows theo số lần thực sự đặt cược.
+    Rolling window gồm đúng H BETS.
 
-    Ví dụ H=30:
-        mỗi window gồm đúng 30 lần cược liên tiếp.
+    Chỉ chạy trong cùng fold.
     """
 
-    bets_df = (
+    bets = (
         fold_df.loc[
             fold_df[
                 "bet"
-            ].eq(1)
+            ]
+            .eq(
+                1
+            )
         ]
         .sort_values(
             "date"
@@ -1076,27 +1202,18 @@ def build_bet_windows(
     )
 
 
-    n = len(
-        bets_df
-    )
-
-
-    if n < horizon_bets:
+    if (
+        len(
+            bets
+        )
+        < horizon_bets
+    ):
 
         return []
 
 
-    profits = (
-        bets_df[
-            "profit"
-        ]
-        .to_numpy(
-            dtype=float
-        )
-    )
-
-    costs = (
-        bets_df[
+    cost = (
+        bets[
             "cost"
         ]
         .to_numpy(
@@ -1104,8 +1221,19 @@ def build_bet_windows(
         )
     )
 
+
+    profit = (
+        bets[
+            "profit"
+        ]
+        .to_numpy(
+            dtype=float
+        )
+    )
+
+
     hits = (
-        bets_df[
+        bets[
             "hit_if_bet"
         ]
         .to_numpy(
@@ -1114,70 +1242,72 @@ def build_bet_windows(
     )
 
 
-    prefix_profit = np.concatenate(
-        [
-            [0.0],
-            np.cumsum(
-                profits
-            ),
-        ]
+    prefix_cost = (
+        prefix_sum(
+            cost
+        )
     )
 
-    prefix_cost = np.concatenate(
-        [
-            [0.0],
-            np.cumsum(
-                costs
-            ),
-        ]
+
+    prefix_profit = (
+        prefix_sum(
+            profit
+        )
     )
 
-    prefix_hits = np.concatenate(
-        [
-            [0],
-            np.cumsum(
-                hits
-            ),
-        ]
+
+    prefix_hits = (
+        prefix_sum(
+            hits
+        )
     )
 
 
     records = []
 
 
-    for end_idx in range(
-        horizon_bets - 1,
-        n,
+    max_start = (
+        len(
+            bets
+        )
+        - horizon_bets
+        + 1
+    )
+
+
+    for start_idx in range(
+        max_start
     ):
 
-        start_idx = (
-            end_idx
-            - horizon_bets
-            + 1
+        end_idx_exclusive = (
+            start_idx
+            + horizon_bets
         )
 
 
-        total_profit = (
-            prefix_profit[
-                end_idx + 1
-            ]
-            - prefix_profit[
-                start_idx
-            ]
-        )
-
-        total_cost = (
+        total_cost = float(
             prefix_cost[
-                end_idx + 1
+                end_idx_exclusive
             ]
             - prefix_cost[
                 start_idx
             ]
         )
 
+
+        total_profit = float(
+            prefix_profit[
+                end_idx_exclusive
+            ]
+            - prefix_profit[
+                start_idx
+            ]
+        )
+
+
         n_hits = int(
             prefix_hits[
-                end_idx + 1
+                end_idx_exclusive
             ]
             - prefix_hits[
                 start_idx
@@ -1185,36 +1315,19 @@ def build_bet_windows(
         )
 
 
-        window_start = (
-            bets_df.loc[
+        start_date = (
+            bets.loc[
                 start_idx,
                 "date",
             ]
         )
 
-        window_end = (
-            bets_df.loc[
-                end_idx,
+
+        end_date = (
+            bets.loc[
+                end_idx_exclusive - 1,
                 "date",
             ]
-        )
-
-        calendar_span = (
-            window_end
-            - window_start
-        ).days + 1
-
-
-        roi = (
-            safe_roi(
-                total_profit,
-                total_cost,
-            )
-        )
-
-        hit_rate = (
-            n_hits
-            / horizon_bets
         )
 
 
@@ -1229,27 +1342,23 @@ def build_bet_windows(
                 ),
 
                 "window_start": (
-                    window_start
+                    start_date
                 ),
 
                 "window_end": (
-                    window_end
+                    end_date
                 ),
 
-                "calendar_span_days": (
-                    calendar_span
+                "n_eval_days": (
+                    np.nan
                 ),
 
-                "n_bet_days": (
+                "n_bets": (
                     horizon_bets
                 ),
 
-                "number_hits": (
+                "n_hits": (
                     n_hits
-                ),
-
-                "hit_rate": (
-                    hit_rate
                 ),
 
                 "total_cost": (
@@ -1261,14 +1370,23 @@ def build_bet_windows(
                 ),
 
                 "roi": (
-                    roi
+                    safe_roi(
+                        total_profit,
+                        total_cost,
+                    )
                 ),
 
-                "profitable": (
-                    int(
-                        total_profit
-                        > 0
-                    )
+                "hit_rate": (
+                    n_hits
+                    / horizon_bets
+                ),
+
+                "calendar_span_days": (
+                    (
+                        end_date
+                        - start_date
+                    ).days
+                    + 1
                 ),
             }
         )
@@ -1278,234 +1396,55 @@ def build_bet_windows(
 
 
 # ============================================================
-# BUILD ALL WINDOWS
-# ============================================================
-
-def build_all_windows(
-    daily: pd.DataFrame,
-) -> pd.DataFrame:
-
-    records = []
-
-    config_columns = (
-        get_config_columns()
-    )
-
-
-    grouped = (
-        daily
-        .groupby(
-            config_columns
-            + ["fold"],
-            sort=False,
-        )
-    )
-
-
-    total_groups = (
-        grouped.ngroups
-    )
-
-
-    for group_number, (
-        key,
-        fold_df,
-    ) in enumerate(
-        grouped,
-        start=1,
-    ):
-
-        (
-            model,
-            m,
-            r,
-            fold,
-        ) = key
-
-
-        if (
-            group_number == 1
-            or group_number % 100 == 0
-            or group_number
-            == total_groups
-        ):
-
-            print(
-                f"Window analysis: "
-                f"{group_number:,}"
-                f"/{total_groups:,}"
-            )
-
-
-        # ----------------------------------------------------
-        # Calendar horizons
-        # ----------------------------------------------------
-
-        for horizon in (
-            CALENDAR_HORIZONS
-        ):
-
-            window_records = (
-                build_calendar_windows(
-                    fold_df,
-                    horizon,
-                )
-            )
-
-            for record in (
-                window_records
-            ):
-
-                record.update(
-                    {
-                        "model": (
-                            model
-                        ),
-
-                        "m": (
-                            int(m)
-                        ),
-
-                        "target_participation_rate": (
-                            float(r)
-                        ),
-
-                        "fold": (
-                            fold
-                        ),
-                    }
-                )
-
-            records.extend(
-                window_records
-            )
-
-
-        # ----------------------------------------------------
-        # Bet horizons
-        # ----------------------------------------------------
-
-        for horizon in (
-            BET_HORIZONS
-        ):
-
-            window_records = (
-                build_bet_windows(
-                    fold_df,
-                    horizon,
-                )
-            )
-
-            for record in (
-                window_records
-            ):
-
-                record.update(
-                    {
-                        "model": (
-                            model
-                        ),
-
-                        "m": (
-                            int(m)
-                        ),
-
-                        "target_participation_rate": (
-                            float(r)
-                        ),
-
-                        "fold": (
-                            fold
-                        ),
-                    }
-                )
-
-            records.extend(
-                window_records
-            )
-
-
-    if len(
-        records
-    ) == 0:
-
-        return pd.DataFrame()
-
-
-    return pd.DataFrame(
-        records
-    )
-
-
-# ============================================================
 # WINDOW SUMMARY
 # ============================================================
 
 def summarize_windows(
-    windows: pd.DataFrame,
-) -> pd.DataFrame:
+    windows,
+):
 
     if windows.empty:
-
         return pd.DataFrame()
-
-
-    # Windows không có bet thì ROI = NaN.
-    valid = (
-        windows.loc[
-            windows[
-                "roi"
-            ].notna()
-        ]
-        .copy()
-    )
-
-
-    group_columns = [
-        "model",
-        "m",
-        "target_participation_rate",
-        "window_type",
-        "horizon",
-    ]
 
 
     records = []
 
 
-    for key, subset in (
-        valid.groupby(
-            group_columns,
+    grouped = (
+        windows
+        .groupby(
+            CONFIG_COLUMNS
+            + [
+                "window_type",
+                "horizon",
+            ],
             sort=False,
         )
-    ):
+    )
+
+
+    for keys, subset in grouped:
 
         (
             model,
             m,
-            r,
+            target_rate,
             window_type,
             horizon,
-        ) = key
+        ) = keys
 
 
-        roi_values = (
+        valid_roi = (
             subset[
                 "roi"
             ]
-            .to_numpy(
-                dtype=float
-            )
+            .dropna()
         )
 
-        profit_values = (
-            subset[
-                "total_profit"
-            ]
-            .to_numpy(
-                dtype=float
-            )
-        )
+
+        if valid_roi.empty:
+
+            continue
 
 
         records.append(
@@ -1515,11 +1454,15 @@ def summarize_windows(
                 ),
 
                 "m": (
-                    int(m)
+                    int(
+                        m
+                    )
                 ),
 
                 "target_participation_rate": (
-                    float(r)
+                    float(
+                        target_rate
+                    )
                 ),
 
                 "window_type": (
@@ -1527,102 +1470,85 @@ def summarize_windows(
                 ),
 
                 "horizon": (
-                    int(horizon)
+                    int(
+                        horizon
+                    )
                 ),
 
                 "n_windows": (
                     len(
-                        subset
+                        valid_roi
                     )
-                ),
-
-                "profitable_window_rate": float(
-                    subset[
-                        "profitable"
-                    ].mean()
                 ),
 
                 "mean_roi": float(
-                    np.mean(
-                        roi_values
-                    )
+                    valid_roi.mean()
                 ),
 
                 "median_roi": float(
-                    np.median(
-                        roi_values
-                    )
+                    valid_roi.median()
                 ),
 
                 "std_roi": float(
-                    np.std(
-                        roi_values,
-                        ddof=1,
+                    valid_roi.std(
+                        ddof=1
                     )
-                    if len(
-                        roi_values
-                    ) > 1
-                    else 0.0
-                ),
+                )
+                if len(
+                    valid_roi
+                ) > 1
+                else 0.0,
 
                 "min_roi": float(
-                    np.min(
-                        roi_values
-                    )
+                    valid_roi.min()
                 ),
 
                 "max_roi": float(
-                    np.max(
-                        roi_values
-                    )
+                    valid_roi.max()
                 ),
 
-                "mean_profit": float(
-                    np.mean(
-                        profit_values
+                "profitable_window_rate": float(
+                    (
+                        valid_roi
+                        > 0
                     )
+                    .mean()
                 ),
 
-                "median_profit": float(
-                    np.median(
-                        profit_values
+                "nonnegative_window_rate": float(
+                    (
+                        valid_roi
+                        >= 0
                     )
+                    .mean()
                 ),
 
-                "min_profit": float(
-                    np.min(
-                        profit_values
-                    )
-                ),
-
-                "max_profit": float(
-                    np.max(
-                        profit_values
-                    )
-                ),
-
-                "mean_bet_days": float(
+                "mean_n_bets": float(
                     subset[
-                        "n_bet_days"
-                    ].mean()
+                        "n_bets"
+                    ]
+                    .mean()
                 ),
 
-                "median_bet_days": float(
+                "median_n_bets": float(
                     subset[
-                        "n_bet_days"
-                    ].median()
+                        "n_bets"
+                    ]
+                    .median()
                 ),
 
                 "mean_calendar_span_days": float(
                     subset[
                         "calendar_span_days"
-                    ].mean()
+                    ]
+                    .mean()
                 ),
 
-                "mean_hit_rate": float(
+                "median_calendar_span_days": float(
                     subset[
-                        "hit_rate"
-                    ].mean()
+                        "calendar_span_days"
+                    ]
+                    .median()
                 ),
             }
         )
@@ -1637,18 +1563,23 @@ def summarize_windows(
 # BEST HORIZON PER CONFIG
 # ============================================================
 
-def find_best_horizon_by_config(
-    horizon_summary: pd.DataFrame,
-) -> pd.DataFrame:
+def build_best_by_config(
+    summary,
+):
+    """
+    Best horizon descriptive.
 
-    if horizon_summary.empty:
+    Ưu tiên:
+        profitable_window_rate
+        median_roi
+        mean_roi
 
-        return pd.DataFrame()
-
+    Chỉ xét horizon có >= MIN_WINDOWS_FOR_BEST.
+    """
 
     eligible = (
-        horizon_summary.loc[
-            horizon_summary[
+        summary.loc[
+            summary[
                 "n_windows"
             ]
             .ge(
@@ -1660,85 +1591,78 @@ def find_best_horizon_by_config(
 
 
     if eligible.empty:
+        return eligible
 
-        return pd.DataFrame()
+
+    best = (
+        eligible
+        .sort_values(
+            CONFIG_COLUMNS
+            + [
+                "window_type",
+                "profitable_window_rate",
+                "median_roi",
+                "mean_roi",
+            ],
+            ascending=[
+                True,
+                True,
+                True,
+                True,
+                False,
+                False,
+                False,
+            ],
+        )
+        .groupby(
+            CONFIG_COLUMNS
+            + [
+                "window_type"
+            ],
+            as_index=False,
+            sort=False,
+        )
+        .first()
+    )
+
+
+    return best
+
+
+# ============================================================
+# BEST OVERALL
+# ============================================================
+
+def build_best_overall(
+    summary,
+):
+    """
+    Tạo bốn dòng descriptive:
+
+    1. calendar max median ROI
+    2. calendar max profitable rate
+    3. bet max median ROI
+    4. bet max profitable rate
+    """
+
+    eligible = (
+        summary.loc[
+            summary[
+                "n_windows"
+            ]
+            .ge(
+                MIN_WINDOWS_FOR_BEST
+            )
+        ]
+        .copy()
+    )
+
+
+    if eligible.empty:
+        return eligible
 
 
     records = []
-
-
-    config_columns = (
-        get_config_columns()
-    )
-
-
-    for key, subset in (
-        eligible.groupby(
-            config_columns
-            + ["window_type"],
-            sort=False,
-        )
-    ):
-
-        (
-            model,
-            m,
-            r,
-            window_type,
-        ) = key
-
-
-        # -----------------------------------------------
-        # Primary:
-        #     median ROI cao nhất.
-        #
-        # Tie-break:
-        #     profitable-window rate cao hơn,
-        #     std ROI thấp hơn.
-        # -----------------------------------------------
-
-        best = (
-            subset
-            .sort_values(
-                [
-                    "median_roi",
-                    "profitable_window_rate",
-                    "std_roi",
-                ],
-                ascending=[
-                    False,
-                    False,
-                    True,
-                ],
-            )
-            .iloc[0]
-        )
-
-
-        records.append(
-            best.to_dict()
-        )
-
-
-    return pd.DataFrame(
-        records
-    )
-
-
-# ============================================================
-# BEST OVERALL HORIZONS
-# ============================================================
-
-def find_best_overall(
-    best_by_config: pd.DataFrame,
-) -> pd.DataFrame:
-
-    if best_by_config.empty:
-
-        return pd.DataFrame()
-
-
-    rows = []
 
 
     for window_type in [
@@ -1747,8 +1671,8 @@ def find_best_overall(
     ]:
 
         subset = (
-            best_by_config.loc[
-                best_by_config[
+            eligible.loc[
+                eligible[
                     "window_type"
                 ]
                 .eq(
@@ -1760,74 +1684,81 @@ def find_best_overall(
 
 
         if subset.empty:
-
             continue
 
 
-        # ----------------------------------------------------
-        # Best median ROI
-        # ----------------------------------------------------
+        # ====================================================
+        # MAX MEDIAN ROI
+        # ====================================================
 
-        best_roi = (
+        row = (
             subset
             .sort_values(
                 [
                     "median_roi",
                     "profitable_window_rate",
+                    "n_windows",
                 ],
                 ascending=[
+                    False,
                     False,
                     False,
                 ],
             )
             .iloc[0]
-            .copy()
+            .to_dict()
         )
 
-        best_roi[
-            "selection_metric"
+
+        row[
+            "criterion"
         ] = (
             "max_median_roi"
         )
 
-        rows.append(
-            best_roi
+
+        records.append(
+            row
         )
 
 
-        # ----------------------------------------------------
-        # Best profitable window rate
-        # ----------------------------------------------------
+        # ====================================================
+        # MAX PROFITABLE RATE
+        # ====================================================
 
-        best_stability = (
+        row = (
             subset
             .sort_values(
                 [
                     "profitable_window_rate",
                     "median_roi",
+                    "n_windows",
                 ],
                 ascending=[
+                    False,
                     False,
                     False,
                 ],
             )
             .iloc[0]
-            .copy()
+            .to_dict()
         )
 
-        best_stability[
-            "selection_metric"
+
+        row[
+            "criterion"
         ] = (
             "max_profitable_window_rate"
         )
 
-        rows.append(
-            best_stability
+
+        records.append(
+            row
         )
 
 
     return pd.DataFrame(
-        rows
+        records
     )
 
 
@@ -1836,44 +1767,48 @@ def find_best_overall(
 # ============================================================
 
 def print_first_positive(
-    first_positive: pd.DataFrame,
-    summary: pd.DataFrame,
+    first_positive,
 ):
 
-    merged = (
-        first_positive
-        .merge(
-            summary[
-                [
-                    "model",
-                    "m",
-                    "target_participation_rate",
-                    "roi",
-                ]
-            ],
-            on=[
-                "model",
-                "m",
-                "target_participation_rate",
-            ],
-            how="left",
-            suffixes=(
-                "",
-                "_strategy15",
-            ),
-        )
+    positive = (
+        first_positive.loc[
+            first_positive[
+                "final_roi"
+            ]
+            .gt(
+                0
+            )
+        ]
+        .copy()
     )
 
 
-    top = (
-        merged
+    if positive.empty:
+
+        print(
+            "\nKhông có config final ROI > 0."
+        )
+
+        return
+
+
+    positive = (
+        positive
         .sort_values(
-            "roi",
-            ascending=False,
+            [
+                "stable_positive_bet_day",
+                "first_positive_bet_day",
+                "final_roi",
+            ],
+            ascending=[
+                True,
+                True,
+                False,
+            ],
             na_position="last",
         )
         .head(
-            30
+            20
         )
     )
 
@@ -1882,8 +1817,11 @@ def print_first_positive(
         "model",
         "m",
         "target_participation_rate",
+        "n_eval_days",
         "n_bet_days",
         "number_hits",
+        "first_positive_eval_day",
+        "stable_positive_eval_day",
         "first_positive_bet_day",
         "stable_positive_bet_day",
         "first_positive_calendar_days",
@@ -1894,32 +1832,34 @@ def print_first_positive(
 
     print(
         "\n"
-        + "=" * 190
-    )
-
-    print(
-        "FIRST / STABLE POSITIVE - "
-        "TOP STRATEGY 15 CONFIGURATIONS"
-    )
-
-    print(
-        "=" * 190
+        + "=" * 220
     )
 
 
     print(
-        top[
+        "TIME TO PROFIT - POSITIVE FINAL ROI CONFIGS"
+    )
+
+
+    print(
+        "=" * 220
+    )
+
+
+    print(
+        positive[
             columns
         ]
         .to_string(
             index=False,
+
             formatters={
                 "target_participation_rate": (
                     "{:.0%}".format
                 ),
 
                 "final_roi": (
-                    "{:.2%}".format
+                    "{:+.2%}".format
                 ),
             },
         )
@@ -1927,70 +1867,71 @@ def print_first_positive(
 
 
 # ============================================================
-# PRINT BEST HORIZONS
+# PRINT BEST OVERALL
 # ============================================================
 
-def print_best_horizons(
-    best_overall: pd.DataFrame,
+def print_best_overall(
+    best,
 ):
 
-    if best_overall.empty:
-
-        print(
-            "\nKhông có đủ horizon "
-            "để phân tích."
-        )
-
+    if best.empty:
         return
 
 
     columns = [
-        "selection_metric",
+        "criterion",
         "window_type",
         "model",
         "m",
         "target_participation_rate",
         "horizon",
         "n_windows",
-        "median_roi",
         "mean_roi",
-        "profitable_window_rate",
+        "median_roi",
         "std_roi",
-        "mean_bet_days",
+        "profitable_window_rate",
+        "mean_n_bets",
         "mean_calendar_span_days",
     ]
 
 
     print(
         "\n"
-        + "=" * 200
+        + "=" * 220
     )
+
 
     print(
         "BEST OBSERVED PROFIT HORIZONS"
     )
 
+
     print(
-        "=" * 200
+        "=" * 220
     )
 
 
     print(
-        best_overall[
+        best[
             columns
         ]
         .to_string(
             index=False,
+
             formatters={
                 "target_participation_rate": (
                     "{:.0%}".format
                 ),
 
-                "median_roi": (
-                    "{:.2%}".format
+                "mean_roi": (
+                    "{:+.2%}".format
                 ),
 
-                "mean_roi": (
+                "median_roi": (
+                    "{:+.2%}".format
+                ),
+
+                "std_roi": (
                     "{:.2%}".format
                 ),
 
@@ -1998,11 +1939,7 @@ def print_best_horizons(
                     "{:.2%}".format
                 ),
 
-                "std_roi": (
-                    "{:.2%}".format
-                ),
-
-                "mean_bet_days": (
+                "mean_n_bets": (
                     "{:.1f}".format
                 ),
 
@@ -2020,10 +1957,9 @@ def print_best_horizons(
 
 def main():
 
-    (
-        daily,
-        strategy_summary,
-    ) = load_data()
+    daily = (
+        load_data()
+    )
 
 
     print(
@@ -2031,94 +1967,217 @@ def main():
         f"{len(daily):,}"
     )
 
-    print(
-        f"Strategy configs: "
-        f"{len(strategy_summary):,}"
-    )
 
     print(
-        "Calendar horizons: "
-        + ", ".join(
-            str(x)
-            for x
-            in CALENDAR_HORIZONS
-        )
+        f"Configurations: "
+        f"{daily[CONFIG_COLUMNS].drop_duplicates().shape[0]:,}"
     )
 
+
     print(
-        "Bet horizons: "
-        + ", ".join(
-            str(x)
-            for x
-            in BET_HORIZONS
-        )
+        f"Models: "
+        f"{daily['model'].nunique()}"
     )
 
 
     # ========================================================
-    # FIRST POSITIVE
+    # FIRST / STABLE POSITIVE
     # ========================================================
-
-    print(
-        "\nCalculating "
-        "first/stable positive..."
-    )
-
 
     first_positive_records = []
 
 
-    grouped_configs = (
-        daily
-        .groupby(
-            get_config_columns(),
+    for _, subset in daily.groupby(
+        CONFIG_COLUMNS,
+        sort=False,
+    ):
+
+        first_positive_records.append(
+            first_positive_analysis(
+                subset
+            )
+        )
+
+
+    first_positive = pd.DataFrame(
+        first_positive_records
+    )
+
+
+    # ========================================================
+    # WINDOWS
+    # ========================================================
+
+    window_records = []
+
+
+    grouped = (
+        daily.groupby(
+            CONFIG_COLUMNS
+            + [
+                "fold"
+            ],
             sort=False,
         )
     )
 
 
-    for key, config_df in (
-        grouped_configs
+    total_groups = (
+        daily[
+            CONFIG_COLUMNS
+            + [
+                "fold"
+            ]
+        ]
+        .drop_duplicates()
+        .shape[0]
+    )
+
+
+    print(
+        f"Config-fold groups: "
+        f"{total_groups:,}"
+    )
+
+
+    for group_number, (
+        keys,
+        fold_df,
+    ) in enumerate(
+        grouped,
+        start=1,
     ):
 
-        first_positive_records.append(
-            first_positive_analysis(
-                config_df
+        (
+            model,
+            m,
+            target_rate,
+            fold,
+        ) = keys
+
+
+        if (
+            group_number == 1
+            or group_number % 250 == 0
+            or group_number == total_groups
+        ):
+
+            print(
+                f"Processing group "
+                f"{group_number:,}/"
+                f"{total_groups:,}"
             )
-        )
 
 
-    first_positive = (
-        pd.DataFrame(
-            first_positive_records
-        )
+        # ====================================================
+        # CALENDAR
+        # ====================================================
+
+        for horizon in (
+            CALENDAR_HORIZONS
+        ):
+
+            records = (
+                build_calendar_windows(
+                    fold_df,
+                    horizon,
+                )
+            )
+
+
+            for record in records:
+
+                record.update(
+                    {
+                        "model": (
+                            model
+                        ),
+
+                        "m": (
+                            int(
+                                m
+                            )
+                        ),
+
+                        "target_participation_rate": (
+                            float(
+                                target_rate
+                            )
+                        ),
+
+                        "fold": (
+                            fold
+                        ),
+                    }
+                )
+
+
+            window_records.extend(
+                records
+            )
+
+
+        # ====================================================
+        # BET
+        # ====================================================
+
+        for horizon in (
+            BET_HORIZONS
+        ):
+
+            records = (
+                build_bet_windows(
+                    fold_df,
+                    horizon,
+                )
+            )
+
+
+            for record in records:
+
+                record.update(
+                    {
+                        "model": (
+                            model
+                        ),
+
+                        "m": (
+                            int(
+                                m
+                            )
+                        ),
+
+                        "target_participation_rate": (
+                            float(
+                                target_rate
+                            )
+                        ),
+
+                        "fold": (
+                            fold
+                        ),
+                    }
+                )
+
+
+            window_records.extend(
+                records
+            )
+
+
+    windows = pd.DataFrame(
+        window_records
     )
 
-
-    # ========================================================
-    # ROLLING WINDOWS
-    # ========================================================
 
     print(
-        "\nBuilding rolling windows..."
-    )
-
-
-    windows = (
-        build_all_windows(
-            daily
-        )
-    )
-
-
-    print(
-        f"Window rows: "
+        f"\nWindow rows: "
         f"{len(windows):,}"
     )
 
 
     # ========================================================
-    # SUMMARIZE WINDOWS
+    # SUMMARY
     # ========================================================
 
     horizon_summary = (
@@ -2128,26 +2187,16 @@ def main():
     )
 
 
-    print(
-        f"Horizon summary rows: "
-        f"{len(horizon_summary):,}"
-    )
-
-
-    # ========================================================
-    # BEST HORIZON PER CONFIG
-    # ========================================================
-
     best_by_config = (
-        find_best_horizon_by_config(
+        build_best_by_config(
             horizon_summary
         )
     )
 
 
     best_overall = (
-        find_best_overall(
-            best_by_config
+        build_best_overall(
+            horizon_summary
         )
     )
 
@@ -2157,12 +2206,11 @@ def main():
     # ========================================================
 
     print_first_positive(
-        first_positive,
-        strategy_summary,
+        first_positive
     )
 
 
-    print_best_horizons(
+    print_best_overall(
         best_overall
     )
 
@@ -2177,11 +2225,6 @@ def main():
         encoding="utf-8-sig",
     )
 
-    windows.to_csv(
-        OUTPUT_WINDOWS,
-        index=False,
-        encoding="utf-8-sig",
-    )
 
     horizon_summary.to_csv(
         OUTPUT_SUMMARY,
@@ -2189,11 +2232,13 @@ def main():
         encoding="utf-8-sig",
     )
 
+
     best_by_config.to_csv(
-        OUTPUT_BEST_HORIZON,
+        OUTPUT_BEST_CONFIG,
         index=False,
         encoding="utf-8-sig",
     )
+
 
     best_overall.to_csv(
         OUTPUT_BEST_OVERALL,
@@ -2202,29 +2247,56 @@ def main():
     )
 
 
+    if SAVE_WINDOW_LEVEL:
+
+        windows.to_csv(
+            OUTPUT_WINDOWS,
+            index=False,
+            encoding="utf-8-sig",
+        )
+
+
+    # ========================================================
+    # FINAL
+    # ========================================================
+
     print(
         "\nĐã lưu:"
     )
+
 
     print(
         OUTPUT_FIRST_POSITIVE
     )
 
-    print(
-        OUTPUT_WINDOWS
-    )
 
     print(
         OUTPUT_SUMMARY
     )
 
+
     print(
-        OUTPUT_BEST_HORIZON
+        OUTPUT_BEST_CONFIG
     )
+
 
     print(
         OUTPUT_BEST_OVERALL
     )
+
+
+    if SAVE_WINDOW_LEVEL:
+
+        print(
+            OUTPUT_WINDOWS
+        )
+
+    else:
+
+        print(
+            "\nWindow-level CSV không lưu "
+            "(SAVE_WINDOW_LEVEL=False)."
+        )
 
 
 if __name__ == "__main__":
