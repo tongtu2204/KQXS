@@ -27,6 +27,17 @@ artifacts/models/*
 artifacts/tables/*.csv
 artifacts/strategies/*.csv
 
+# Canonical split-refactor deliverables are intentionally versioned so a
+# normal git pull retrieves the final summaries, figures, and compressed
+# daily predictions.
+!artifacts/refactor/
+!artifacts/refactor/**/
+!artifacts/refactor/**/*.csv
+!artifacts/refactor/**/*.csv.gz
+!artifacts/refactor/**/*.json
+!artifacts/refactor/**/*.md
+!artifacts/refactor/**/*.png
+
 # Jupyter
 .ipynb_checkpoints/
 
