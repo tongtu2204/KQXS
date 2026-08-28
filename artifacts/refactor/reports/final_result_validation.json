@@ -1,0 +1,10 @@
+{
+  "frozen_config_identical": true,
+  "final_start": "2025-01-01",
+  "final_end": "2026-08-23",
+  "final_unique_dates": 595,
+  "canonical_model_count": 10,
+  "probability_rows": 5950,
+  "strategy_count": 2,
+  "report_and_figures_present": true
+}

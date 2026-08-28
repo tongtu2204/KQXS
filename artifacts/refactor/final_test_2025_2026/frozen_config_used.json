@@ -1,0 +1,37 @@
+{
+  "selection_period": [
+    "2023-01-01",
+    "2024-12-31"
+  ],
+  "final_test_period": [
+    "2025-01-01",
+    "2026-12-31"
+  ],
+  "selection_rule": "max Wilson 95% lower bound minus break-even hit rate; tie-break total profit, smaller m, model name",
+  "minimum_validation_bets": 50,
+  "primary_strategy": "selective_top_m",
+  "strategies": [
+    {
+      "strategy": "always_top_m",
+      "model": "cdm",
+      "m": 1,
+      "target_participation_rate": null,
+      "confidence_threshold": null,
+      "tie_acceptance_rate": null,
+      "validation_selection_score": -0.005937412933704943,
+      "validation_n_bets": 723,
+      "validation_roi": -0.004149377593360996
+    },
+    {
+      "strategy": "selective_top_m",
+      "model": "bayesian_markov",
+      "m": 4,
+      "target_participation_rate": 0.2,
+      "confidence_threshold": 0.09826589595375777,
+      "tie_acceptance_rate": 0.125,
+      "validation_selection_score": 0.003143530294794153,
+      "validation_n_bets": 145,
+      "validation_roi": 0.7931034482758621
+    }
+  ]
+}
