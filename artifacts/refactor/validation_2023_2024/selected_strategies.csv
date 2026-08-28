@@ -1,0 +1,3 @@
+﻿strategy,model,target_participation_rate,confidence_threshold,tie_acceptance_rate,m,n_days,n_bets,n_hits,participation_rate,hit_rate,break_even_hit_rate,wilson_lower,selection_score,total_cost,total_revenue,total_profit,roi,max_drawdown
+always_top_m,cdm,,,,1,723,723,9,1.0,0.012448132780082987,0.0125,0.006562587066295058,-0.005937412933704943,7230000.0,7200000.0,-30000.0,-0.004149377593360996,1550000.0
+selective_top_m,bayesian_markov,0.2,0.09826589595375777,0.125,4,723,145,13,0.20055325034578148,0.0896551724137931,0.05,0.053143530294794156,0.003143530294794153,5800000.0,10400000.0,4600000.0,0.7931034482758621,1280000.0

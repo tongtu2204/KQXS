@@ -1,0 +1,13 @@
+{
+  "selection_period": [
+    "2023-01-01",
+    "2024-12-31"
+  ],
+  "model_count": 10,
+  "candidate_count": 1250,
+  "selected_strategy_count": 2,
+  "daily_min_date": "2023-01-01",
+  "daily_max_date": "2024-12-31",
+  "primary_strategy": "selective_top_m",
+  "final_test_metrics_read": false
+}
