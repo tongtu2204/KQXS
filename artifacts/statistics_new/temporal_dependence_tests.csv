@@ -1,0 +1,271 @@
+﻿scope,dimension,position,lag_days,n_days,autocorrelation
+pooled,ALL,unit,1,7093,0.0029196340356145893
+pooled,ALL,unit,2,7093,-0.0018700652111647736
+pooled,ALL,unit,3,7093,0.0006275276769542588
+pooled,ALL,unit,7,7093,0.003912976882004442
+pooled,ALL,unit,14,7093,0.011315347172789095
+pooled,ALL,unit,30,7093,0.009884904255720015
+pooled,ALL,tens,1,7093,0.0326257110703046
+pooled,ALL,tens,2,7093,0.019047472535513962
+pooled,ALL,tens,3,7093,0.018822081222383394
+pooled,ALL,tens,7,7093,-0.006267509083624125
+pooled,ALL,tens,14,7093,-0.0014275357875745038
+pooled,ALL,tens,30,7093,0.02012642749997795
+pooled,ALL,hundreds,1,7093,-0.005348983458459688
+pooled,ALL,hundreds,2,7093,0.00726602872203225
+pooled,ALL,hundreds,3,7093,-0.01138238832970787
+pooled,ALL,hundreds,7,7093,-0.012311813579433444
+pooled,ALL,hundreds,14,7093,-0.008489128133967346
+pooled,ALL,hundreds,30,7093,-0.008647567907072698
+pooled,ALL,thousands,1,7093,0.010523741672118404
+pooled,ALL,thousands,2,7093,0.006964391366015617
+pooled,ALL,thousands,3,7093,-0.0037838988099104885
+pooled,ALL,thousands,7,7093,0.00773535127670205
+pooled,ALL,thousands,14,7093,-0.019327039586812984
+pooled,ALL,thousands,30,7093,0.0006049114556137485
+pooled,ALL,ten_thousands,1,7093,0.021842145078323404
+pooled,ALL,ten_thousands,2,7093,-0.0024214156833273362
+pooled,ALL,ten_thousands,3,7093,-0.00043695360431814345
+pooled,ALL,ten_thousands,7,7093,-0.00623781349918783
+pooled,ALL,ten_thousands,14,7093,-0.01383702297401639
+pooled,ALL,ten_thousands,30,7093,-0.002550927843483608
+by_prize,Đặc biệt,unit,1,7093,0.009743646219149601
+by_prize,Đặc biệt,unit,2,7093,-0.011137306845596068
+by_prize,Đặc biệt,unit,3,7093,-0.008435469545503673
+by_prize,Đặc biệt,unit,7,7093,-0.0001327125129080362
+by_prize,Đặc biệt,unit,14,7093,0.004851624560495407
+by_prize,Đặc biệt,unit,30,7093,-0.01008556630108258
+by_prize,Đặc biệt,tens,1,7093,0.00976005925173513
+by_prize,Đặc biệt,tens,2,7093,0.011708197713629749
+by_prize,Đặc biệt,tens,3,7093,0.01746863990959816
+by_prize,Đặc biệt,tens,7,7093,-0.013706908230128167
+by_prize,Đặc biệt,tens,14,7093,0.015833469627254602
+by_prize,Đặc biệt,tens,30,7093,-0.007685459041021264
+by_prize,Đặc biệt,hundreds,1,7093,-0.008539556183550071
+by_prize,Đặc biệt,hundreds,2,7093,-0.019935149556155073
+by_prize,Đặc biệt,hundreds,3,7093,0.02462928245544039
+by_prize,Đặc biệt,hundreds,7,7093,-0.02749966741198819
+by_prize,Đặc biệt,hundreds,14,7093,-0.004535132794359567
+by_prize,Đặc biệt,hundreds,30,7093,-0.01637462572787399
+by_prize,Đặc biệt,thousands,1,7093,0.006976724906257546
+by_prize,Đặc biệt,thousands,2,7093,0.010277622592347326
+by_prize,Đặc biệt,thousands,3,7093,0.00279119483501651
+by_prize,Đặc biệt,thousands,7,7093,0.009476050883926683
+by_prize,Đặc biệt,thousands,14,7093,0.007025043899887705
+by_prize,Đặc biệt,thousands,30,7093,0.0014439932607536404
+by_prize,Đặc biệt,ten_thousands,1,7093,-0.0014366572444603435
+by_prize,Đặc biệt,ten_thousands,2,7093,0.005718187146868503
+by_prize,Đặc biệt,ten_thousands,3,7093,0.008177841135852829
+by_prize,Đặc biệt,ten_thousands,7,7093,-0.01094712469000461
+by_prize,Đặc biệt,ten_thousands,14,7093,-0.008255805428240733
+by_prize,Đặc biệt,ten_thousands,30,7093,0.00801202591457374
+by_prize,Giải nhất,unit,1,7093,-0.002434785933465701
+by_prize,Giải nhất,unit,2,7093,0.008947793314098802
+by_prize,Giải nhất,unit,3,7093,-0.014621465659722534
+by_prize,Giải nhất,unit,7,7093,0.002396556994614696
+by_prize,Giải nhất,unit,14,7093,-0.0011916460442940823
+by_prize,Giải nhất,unit,30,7093,-0.006741261060121343
+by_prize,Giải nhất,tens,1,7093,0.003802895987711369
+by_prize,Giải nhất,tens,2,7093,-0.007049671603148882
+by_prize,Giải nhất,tens,3,7093,-0.0005972513073770375
+by_prize,Giải nhất,tens,7,7093,0.016070881024308793
+by_prize,Giải nhất,tens,14,7093,0.003020869545563876
+by_prize,Giải nhất,tens,30,7093,-0.019857650164427185
+by_prize,Giải nhất,hundreds,1,7093,-0.00043298446316127504
+by_prize,Giải nhất,hundreds,2,7093,-0.012869081917590296
+by_prize,Giải nhất,hundreds,3,7093,0.01284772027252369
+by_prize,Giải nhất,hundreds,7,7093,0.0019442603079612274
+by_prize,Giải nhất,hundreds,14,7093,0.017515951348826466
+by_prize,Giải nhất,hundreds,30,7093,0.009634721015458904
+by_prize,Giải nhất,thousands,1,7093,0.0062198058720351985
+by_prize,Giải nhất,thousands,2,7093,-0.010968042969597417
+by_prize,Giải nhất,thousands,3,7093,-0.00415714338877978
+by_prize,Giải nhất,thousands,7,7093,0.0006043677754035694
+by_prize,Giải nhất,thousands,14,7093,0.027587267560108323
+by_prize,Giải nhất,thousands,30,7093,0.00015286119588532886
+by_prize,Giải nhất,ten_thousands,1,7093,-0.014072689876189386
+by_prize,Giải nhất,ten_thousands,2,7093,-0.019370659025537564
+by_prize,Giải nhất,ten_thousands,3,7093,-0.019872544160451224
+by_prize,Giải nhất,ten_thousands,7,7093,0.02276067511405746
+by_prize,Giải nhất,ten_thousands,14,7093,-0.012444685207488723
+by_prize,Giải nhất,ten_thousands,30,7093,-0.018430246873433732
+by_prize,Giải nhì,unit,1,7093,3.384560271206426e-05
+by_prize,Giải nhì,unit,2,7093,-0.0069688986248132075
+by_prize,Giải nhì,unit,3,7093,0.01691360119104571
+by_prize,Giải nhì,unit,7,7093,0.011706354595207363
+by_prize,Giải nhì,unit,14,7093,-0.0003953814093670094
+by_prize,Giải nhì,unit,30,7093,0.003751280789055634
+by_prize,Giải nhì,tens,1,7093,-0.012187242026972928
+by_prize,Giải nhì,tens,2,7093,-0.00487098193298601
+by_prize,Giải nhì,tens,3,7093,0.003341229253401977
+by_prize,Giải nhì,tens,7,7093,0.03143425573385065
+by_prize,Giải nhì,tens,14,7093,-0.012071265866877446
+by_prize,Giải nhì,tens,30,7093,0.0022810033103582944
+by_prize,Giải nhì,hundreds,1,7093,0.008815166047749162
+by_prize,Giải nhì,hundreds,2,7093,0.010965892327639337
+by_prize,Giải nhì,hundreds,3,7093,-0.008611978757156347
+by_prize,Giải nhì,hundreds,7,7093,-0.013996164077825736
+by_prize,Giải nhì,hundreds,14,7093,-0.0045646949830983755
+by_prize,Giải nhì,hundreds,30,7093,0.013382309593171651
+by_prize,Giải nhì,thousands,1,7093,0.007085592697784808
+by_prize,Giải nhì,thousands,2,7093,-0.004056781054393205
+by_prize,Giải nhì,thousands,3,7093,-0.017083546649835475
+by_prize,Giải nhì,thousands,7,7093,0.0003008947287050944
+by_prize,Giải nhì,thousands,14,7093,0.015403184864159772
+by_prize,Giải nhì,thousands,30,7093,0.010151102556562009
+by_prize,Giải nhì,ten_thousands,1,7093,-0.001973585183608716
+by_prize,Giải nhì,ten_thousands,2,7093,0.0005152533044650936
+by_prize,Giải nhì,ten_thousands,3,7093,-0.0014071314337596517
+by_prize,Giải nhì,ten_thousands,7,7093,-0.0017976259606680583
+by_prize,Giải nhì,ten_thousands,14,7093,0.015400880248306938
+by_prize,Giải nhì,ten_thousands,30,7093,0.019760287635173752
+by_prize,Giải ba,unit,1,7093,-0.0064852051851026936
+by_prize,Giải ba,unit,2,7093,0.005067266287149036
+by_prize,Giải ba,unit,3,7093,-0.01161658642280053
+by_prize,Giải ba,unit,7,7093,-0.0185145742726358
+by_prize,Giải ba,unit,14,7093,-0.012220235305084622
+by_prize,Giải ba,unit,30,7093,0.026888115964550714
+by_prize,Giải ba,tens,1,7093,0.016498167194060026
+by_prize,Giải ba,tens,2,7093,0.0070315467391932245
+by_prize,Giải ba,tens,3,7093,0.0009629399180211981
+by_prize,Giải ba,tens,7,7093,0.0006789873360281786
+by_prize,Giải ba,tens,14,7093,0.015200295678719989
+by_prize,Giải ba,tens,30,7093,-0.013240974469851877
+by_prize,Giải ba,hundreds,1,7093,-0.0050834405160754895
+by_prize,Giải ba,hundreds,2,7093,-0.0048481823901746855
+by_prize,Giải ba,hundreds,3,7093,-0.017049726551335458
+by_prize,Giải ba,hundreds,7,7093,-0.002062571605224927
+by_prize,Giải ba,hundreds,14,7093,-0.016238582635036684
+by_prize,Giải ba,hundreds,30,7093,0.008659474424558965
+by_prize,Giải ba,thousands,1,7093,-0.009342599109020185
+by_prize,Giải ba,thousands,2,7093,0.022670666494699093
+by_prize,Giải ba,thousands,3,7093,-0.006644077240725875
+by_prize,Giải ba,thousands,7,7093,-0.007242100770640228
+by_prize,Giải ba,thousands,14,7093,-0.01188061407155828
+by_prize,Giải ba,thousands,30,7093,-0.0005491831198904223
+by_prize,Giải ba,ten_thousands,1,7093,0.013619005011622918
+by_prize,Giải ba,ten_thousands,2,7093,-0.018931803036350676
+by_prize,Giải ba,ten_thousands,3,7093,0.0023248963031372687
+by_prize,Giải ba,ten_thousands,7,7093,-0.017286696507957694
+by_prize,Giải ba,ten_thousands,14,7093,-0.0167463956354627
+by_prize,Giải ba,ten_thousands,30,7093,-0.012440806722997452
+by_prize,Giải tư,unit,1,7093,-0.010940943095469433
+by_prize,Giải tư,unit,2,7093,-0.0070365552134772965
+by_prize,Giải tư,unit,3,7093,0.019744366597148955
+by_prize,Giải tư,unit,7,7093,0.019095702638383418
+by_prize,Giải tư,unit,14,7093,0.0019630955550567733
+by_prize,Giải tư,unit,30,7093,0.003686856226928961
+by_prize,Giải tư,tens,1,7093,0.010141256776083265
+by_prize,Giải tư,tens,2,7093,0.0018934183692693096
+by_prize,Giải tư,tens,3,7093,0.004325081878701205
+by_prize,Giải tư,tens,7,7093,-0.016255619235126584
+by_prize,Giải tư,tens,14,7093,-0.01726523232675703
+by_prize,Giải tư,tens,30,7093,0.006307646418596857
+by_prize,Giải tư,hundreds,1,7093,0.024122683082954996
+by_prize,Giải tư,hundreds,2,7093,0.009461639553940887
+by_prize,Giải tư,hundreds,3,7093,0.0013784182583134257
+by_prize,Giải tư,hundreds,7,7093,0.0026736511495540453
+by_prize,Giải tư,hundreds,14,7093,-0.0036375675707250215
+by_prize,Giải tư,hundreds,30,7093,0.00034950422509743423
+by_prize,Giải tư,thousands,1,7093,-0.0007237617437554468
+by_prize,Giải tư,thousands,2,7093,-0.008300477941319556
+by_prize,Giải tư,thousands,3,7093,-0.0067107796627182345
+by_prize,Giải tư,thousands,7,7093,-0.01199105339538314
+by_prize,Giải tư,thousands,14,7093,0.012620793823607875
+by_prize,Giải tư,thousands,30,7093,0.01111093930851177
+by_prize,Giải tư,ten_thousands,1,0,
+by_prize,Giải tư,ten_thousands,2,0,
+by_prize,Giải tư,ten_thousands,3,0,
+by_prize,Giải tư,ten_thousands,7,0,
+by_prize,Giải tư,ten_thousands,14,0,
+by_prize,Giải tư,ten_thousands,30,0,
+by_prize,Giải năm,unit,1,7093,-0.015454555873763626
+by_prize,Giải năm,unit,2,7093,0.00017879453176854952
+by_prize,Giải năm,unit,3,7093,0.0009618245209517427
+by_prize,Giải năm,unit,7,7093,0.011392393105321025
+by_prize,Giải năm,unit,14,7093,0.017858267475656473
+by_prize,Giải năm,unit,30,7093,-0.0018224692582169955
+by_prize,Giải năm,tens,1,7093,-0.013133555837561496
+by_prize,Giải năm,tens,2,7093,0.013173926740900822
+by_prize,Giải năm,tens,3,7093,0.036314034600394104
+by_prize,Giải năm,tens,7,7093,0.008567211730810683
+by_prize,Giải năm,tens,14,7093,-0.0002820304996570074
+by_prize,Giải năm,tens,30,7093,0.011244400853150593
+by_prize,Giải năm,hundreds,1,7093,0.005957062432035679
+by_prize,Giải năm,hundreds,2,7093,0.02457440466406011
+by_prize,Giải năm,hundreds,3,7093,-0.003365527888098961
+by_prize,Giải năm,hundreds,7,7093,0.010032323824484437
+by_prize,Giải năm,hundreds,14,7093,-0.013826111388822088
+by_prize,Giải năm,hundreds,30,7093,0.00022249008328264637
+by_prize,Giải năm,thousands,1,7093,-0.015152660564106166
+by_prize,Giải năm,thousands,2,7093,-0.0030086791288324957
+by_prize,Giải năm,thousands,3,7093,0.0010854822441302352
+by_prize,Giải năm,thousands,7,7093,0.012556242999635852
+by_prize,Giải năm,thousands,14,7093,-0.01279200689843913
+by_prize,Giải năm,thousands,30,7093,0.0024169625306271043
+by_prize,Giải năm,ten_thousands,1,0,
+by_prize,Giải năm,ten_thousands,2,0,
+by_prize,Giải năm,ten_thousands,3,0,
+by_prize,Giải năm,ten_thousands,7,0,
+by_prize,Giải năm,ten_thousands,14,0,
+by_prize,Giải năm,ten_thousands,30,0,
+by_prize,Giải sáu,unit,1,7093,0.019098323153253844
+by_prize,Giải sáu,unit,2,7093,-0.015299886346498544
+by_prize,Giải sáu,unit,3,7093,0.01803880208572218
+by_prize,Giải sáu,unit,7,7093,0.005186756862882005
+by_prize,Giải sáu,unit,14,7093,0.002392941052629931
+by_prize,Giải sáu,unit,30,7093,-0.014845974142928778
+by_prize,Giải sáu,tens,1,7093,-0.0026214734020605234
+by_prize,Giải sáu,tens,2,7093,0.002938945825736766
+by_prize,Giải sáu,tens,3,7093,0.02290586449829437
+by_prize,Giải sáu,tens,7,7093,-0.0019792597498692176
+by_prize,Giải sáu,tens,14,7093,-0.007168701859235276
+by_prize,Giải sáu,tens,30,7093,0.012593909944499238
+by_prize,Giải sáu,hundreds,1,7093,-0.0052475000652137845
+by_prize,Giải sáu,hundreds,2,7093,-0.007267601312719158
+by_prize,Giải sáu,hundreds,3,7093,0.014802928618749397
+by_prize,Giải sáu,hundreds,7,7093,-0.00031444000080986523
+by_prize,Giải sáu,hundreds,14,7093,-0.021943813194551378
+by_prize,Giải sáu,hundreds,30,7093,0.003442857028490329
+by_prize,Giải sáu,thousands,1,0,
+by_prize,Giải sáu,thousands,2,0,
+by_prize,Giải sáu,thousands,3,0,
+by_prize,Giải sáu,thousands,7,0,
+by_prize,Giải sáu,thousands,14,0,
+by_prize,Giải sáu,thousands,30,0,
+by_prize,Giải sáu,ten_thousands,1,0,
+by_prize,Giải sáu,ten_thousands,2,0,
+by_prize,Giải sáu,ten_thousands,3,0,
+by_prize,Giải sáu,ten_thousands,7,0,
+by_prize,Giải sáu,ten_thousands,14,0,
+by_prize,Giải sáu,ten_thousands,30,0,
+by_prize,Giải bảy,unit,1,7093,-0.0008365348552313796
+by_prize,Giải bảy,unit,2,7093,0.018949011754136408
+by_prize,Giải bảy,unit,3,7093,0.0017075535595092392
+by_prize,Giải bảy,unit,7,7093,-0.0027649889930157095
+by_prize,Giải bảy,unit,14,7093,-0.01923926547716127
+by_prize,Giải bảy,unit,30,7093,0.00561505229907483
+by_prize,Giải bảy,tens,1,7093,0.00554814827839659
+by_prize,Giải bảy,tens,2,7093,0.008351457098618668
+by_prize,Giải bảy,tens,3,7093,0.012387058975942309
+by_prize,Giải bảy,tens,7,7093,0.028155785630732868
+by_prize,Giải bảy,tens,14,7093,0.00485430744830449
+by_prize,Giải bảy,tens,30,7093,0.022025701830417264
+by_prize,Giải bảy,hundreds,1,0,
+by_prize,Giải bảy,hundreds,2,0,
+by_prize,Giải bảy,hundreds,3,0,
+by_prize,Giải bảy,hundreds,7,0,
+by_prize,Giải bảy,hundreds,14,0,
+by_prize,Giải bảy,hundreds,30,0,
+by_prize,Giải bảy,thousands,1,0,
+by_prize,Giải bảy,thousands,2,0,
+by_prize,Giải bảy,thousands,3,0,
+by_prize,Giải bảy,thousands,7,0,
+by_prize,Giải bảy,thousands,14,0,
+by_prize,Giải bảy,thousands,30,0,
+by_prize,Giải bảy,ten_thousands,1,0,
+by_prize,Giải bảy,ten_thousands,2,0,
+by_prize,Giải bảy,ten_thousands,3,0,
+by_prize,Giải bảy,ten_thousands,7,0,
+by_prize,Giải bảy,ten_thousands,14,0,
+by_prize,Giải bảy,ten_thousands,30,0,

@@ -1,0 +1,20 @@
+{
+  "input": "data/raw/kqxsmb_all_prizes_2007_2026.csv",
+  "date_min": "2007-01-01",
+  "date_max": "2026-09-06",
+  "n_rows": 191511,
+  "n_draw_days": 7093,
+  "analysis_scopes": [
+    "pooled",
+    "by_prize"
+  ],
+  "positions": [
+    "unit",
+    "tens",
+    "hundreds",
+    "thousands",
+    "ten_thousands"
+  ],
+  "multi_win_rule": "Exclude the automatic Special Prize + Special Encouragement pair.",
+  "multiple_testing_note": "Raw p-values are reported; FDR adjustment will be applied in the review step."
+}
