@@ -1,0 +1,19 @@
+{
+  "input": "../kqxsmb_all_prizes_2007_2026.csv",
+  "n_rows": 191511,
+  "n_dates": 7093,
+  "date_min": "2007-01-01",
+  "date_max": "2026-09-06",
+  "prizes": [
+    "Đặc biệt",
+    "Giải nhất",
+    "Giải nhì",
+    "Giải ba",
+    "Giải tư",
+    "Giải năm",
+    "Giải sáu",
+    "Giải bảy"
+  ],
+  "fdr_alpha": 0.05,
+  "multi_win_excluded_rule": "DB exact match -> DB special-prize/khuyen-khich automatic pair"
+}
