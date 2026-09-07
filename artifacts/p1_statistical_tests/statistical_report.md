@@ -15,12 +15,15 @@
 | Phân phối chữ số | 45 | 1 |
 | Phân phối đuôi số | 28 hợp lệ / 45 dòng | 5 |
 | Độc lập giữa vị trí | 90 | 0 |
-| Phụ thuộc theo thời gian | 45 | 0 |
+| Markov lag 1 | 90 | 0 |
+| Phụ thuộc độ trễ 1–30 | 2700 | 0 |
+| Ổn định theo giai đoạn | 4050 | 0 |
 
 ## Trúng đồng thời nhiều giải
 
 - Tỷ lệ ngày có ít nhất 2 giải có thể cùng trúng: **62.63%**.
 - Tỷ lệ ngày có ít nhất 3 giải có thể cùng trúng: **0.25%**.
 - Tỷ lệ ngày có ít nhất 4 giải có thể cùng trúng: **0.00%**.
+- Kiểm tra ổn định theo 3 giai đoạn: lưu toàn bộ kết quả tại `04b_temporal_stability/temporal_stability_by_period.csv`.
 
 Các bảng chi tiết và biểu đồ nằm trong cùng thư mục kết quả.

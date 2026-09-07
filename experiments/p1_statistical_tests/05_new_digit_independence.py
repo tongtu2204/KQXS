@@ -100,14 +100,25 @@ def digit_distribution(df: pd.DataFrame) -> pd.DataFrame:
                 stat, pvalue = chisquare(counts.to_numpy())
             else:
                 stat, pvalue = np.nan, np.nan
+            expected_count = total / 10 if total else np.nan
             for digit, count in counts.items():
                 rows.append({
                     "scope": scope, "position": pos, "digit": digit,
-                    "count": int(count), "proportion": count / total if total else np.nan,
+                    "count": int(count), "expected_count": expected_count,
+                    "proportion": count / total if total else np.nan,
+                    "expected_proportion": 0.10,
+                    "deviation": count / total - 0.10 if total else np.nan,
+                    "standardized_residual": (count - expected_count) / math.sqrt(expected_count) if total else np.nan,
                     "chi2": stat, "p_value": pvalue,
                 })
     out = pd.DataFrame(rows)
     tests = out.drop_duplicates(["scope", "position"]).copy()
+    cohen = (
+        out.groupby(["scope", "position"], as_index=False)["deviation"]
+        .apply(lambda x: math.sqrt(np.sum(x.dropna() ** 2 / 0.10)))
+        .rename(columns={"deviation": "cohen_w"})
+    )
+    tests = tests.merge(cohen, on=["scope", "position"], how="left")
     tests["q_value"] = bh_adjust(tests["p_value"])
     tests["reject_fdr_05"] = tests["q_value"] < 0.05
     out = out.drop(columns=["chi2", "p_value"]).merge(
@@ -271,9 +282,132 @@ def build_daily_multi_win(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]
     return daily, yearly
 
 
+def iter_digit_streams(part: pd.DataFrame, pooled: bool):
+    """Yield independent prize/index streams in chronological order."""
+    keys = ["prize", "prize_index"] if pooled else ["prize_index"]
+    for _, stream in part.groupby(keys, dropna=False):
+        yield stream.sort_values("date")
+
+
+def markov_transition_tests(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Test lag-1 Markov dependence and save detailed transition cells."""
+    summary, detail = [], []
+    for scope, part in scope_frames(df):
+        pooled = scope == "pooled"
+        for pos in range(1, 6):
+            previous_all, current_all, gaps_all = [], [], []
+            for stream in iter_digit_streams(part, pooled):
+                current = stream[f"d{pos}"].astype(float)
+                previous = current.shift(1)
+                gaps = stream["date"].diff().dt.days
+                valid = current.notna() & previous.notna()
+                previous_all.extend(previous[valid])
+                current_all.extend(current[valid])
+                gaps_all.extend(gaps[valid])
+            for transition_scope, mask in (
+                ("all_observed_draws", np.ones(len(current_all), dtype=bool)),
+                ("consecutive_days", np.asarray(gaps_all) == 1),
+            ):
+                previous = pd.Series(previous_all)[mask]
+                current = pd.Series(current_all)[mask]
+                table = pd.crosstab(previous, current).reindex(index=range(10), columns=range(10), fill_value=0)
+                table = trim_contingency(table)
+                if table.empty or min(table.shape) < 2:
+                    chi2 = pvalue = v = np.nan
+                    dof = 0
+                else:
+                    chi2, pvalue, dof, _ = chi2_contingency(table, correction=False)
+                    n = int(table.to_numpy().sum())
+                    denom = n * min(table.shape[0] - 1, table.shape[1] - 1)
+                    v = math.sqrt(chi2 / denom) if denom else np.nan
+                summary.append({
+                    "scope": scope, "transition_scope": transition_scope,
+                    "position": pos, "n_transitions": int(len(current)),
+                    "chi2": chi2, "dof": dof, "p_value": pvalue, "cramers_v": v,
+                })
+                if len(current):
+                    raw = pd.DataFrame({"previous_digit": previous.astype(int), "next_digit": current.astype(int)})
+                    counts = pd.crosstab(raw.previous_digit, raw.next_digit).reindex(index=range(10), columns=range(10), fill_value=0)
+                    probabilities = counts.div(counts.sum(axis=1).replace(0, np.nan), axis=0)
+                    for old in range(10):
+                        for new in range(10):
+                            detail.append({
+                                "scope": scope, "transition_scope": transition_scope,
+                                "position": pos, "previous_digit": old, "next_digit": new,
+                                "count": int(counts.loc[old, new]),
+                                "probability": probabilities.loc[old, new],
+                                "deviation_from_uniform": probabilities.loc[old, new] - 0.10,
+                            })
+    summary = pd.DataFrame(summary)
+    summary["q_value"] = summary.groupby("transition_scope")["p_value"].transform(lambda x: bh_adjust(x))
+    summary["reject_fdr_05"] = summary["q_value"] < 0.05
+    return summary, pd.DataFrame(detail)
+
+
+def lag_dependence_tests(df: pd.DataFrame, max_lag: int = 30) -> pd.DataFrame:
+    """Test observation lags 1..30, plus a calendar-consecutive variant."""
+    rows = []
+    for scope, part in scope_frames(df):
+        pooled = scope == "pooled"
+        for pos in range(1, 6):
+            for lag in range(1, max_lag + 1):
+                previous_all, current_all, gap_all = [], [], []
+                for stream in iter_digit_streams(part, pooled):
+                    current = stream[f"d{pos}"].astype(float)
+                    previous = current.shift(lag)
+                    gap = stream["date"].diff(lag)
+                    valid = current.notna() & previous.notna()
+                    previous_all.extend(previous[valid])
+                    current_all.extend(current[valid])
+                    gap_all.extend(gap[valid].dt.days)
+                for lag_scope, mask in (
+                    ("observed_lag", np.ones(len(current_all), dtype=bool)),
+                    ("calendar_lag", np.asarray(gap_all) == lag),
+                ):
+                    previous = pd.Series(previous_all)[mask]
+                    current = pd.Series(current_all)[mask]
+                    table = pd.crosstab(previous, current).reindex(index=range(10), columns=range(10), fill_value=0)
+                    table = trim_contingency(table)
+                    if table.empty or min(table.shape) < 2:
+                        chi2 = pvalue = v = np.nan
+                        dof = 0
+                    else:
+                        chi2, pvalue, dof, _ = chi2_contingency(table, correction=False)
+                        n = int(table.to_numpy().sum())
+                        denom = n * min(table.shape[0] - 1, table.shape[1] - 1)
+                        v = math.sqrt(chi2 / denom) if denom else np.nan
+                    rows.append({
+                        "scope": scope, "lag_scope": lag_scope, "position": pos,
+                        "lag": lag, "n_transitions": int(len(current)),
+                        "chi2": chi2, "dof": dof, "p_value": pvalue, "cramers_v": v,
+                    })
+    out = pd.DataFrame(rows)
+    out["q_value"] = out.groupby("lag_scope")["p_value"].transform(lambda x: bh_adjust(x))
+    out["reject_fdr_05"] = out["q_value"] < 0.05
+    return out
+
+
+def temporal_stability(df: pd.DataFrame, max_lag: int = 30) -> pd.DataFrame:
+    """Re-test all lag/position combinations in three independent periods."""
+    periods = [(2007, 2012), (2013, 2018), (2019, 2026)]
+    rows = []
+    for start, end in periods:
+        part = df[df.year.between(start, end)]
+        result = lag_dependence_tests(part, max_lag=max_lag)
+        result = result[result["lag_scope"] == "observed_lag"].copy()
+        result["period"] = f"{start}-{end}"
+        rows.append(result)
+    out = pd.concat(rows, ignore_index=True)
+    out["q_value_within_period"] = out.groupby("period")["p_value"].transform(lambda x: bh_adjust(x))
+    out["reject_fdr_05_within_period"] = out["q_value_within_period"] < 0.05
+    return out
+
+
 def make_figures(digit, position, temporal, yearly, out_dir: Path):
-    fig_dir = out_dir / "figures"
-    fig_dir.mkdir(parents=True, exist_ok=True)
+    for section in ("01_digit_distribution", "02_position_independence",
+                    "03_markov_by_position", "04_temporal_randomness",
+                    "04b_temporal_stability"):
+        (out_dir / section / "figures").mkdir(parents=True, exist_ok=True)
 
     pooled = digit[digit.scope == "pooled"]
     fig, axes = plt.subplots(2, 3, figsize=(14, 7), sharex=True, sharey=True)
@@ -290,7 +424,62 @@ def make_figures(digit, position, temporal, yearly, out_dir: Path):
     fig.supxlabel("Chữ số", y=0.04)
     fig.supylabel("Tỷ lệ quan sát", x=0.03)
     fig.tight_layout(rect=(0.04, 0.05, 1, 0.94))
-    fig.savefig(fig_dir / "01_pooled_digit_distribution.png", dpi=160)
+    fig.savefig(out_dir / "01_digit_distribution" / "figures" / "01_pooled_digit_distribution.png", dpi=160)
+    plt.close(fig)
+
+
+def make_extended_figures(markov, transitions, lags, stability, digit, position, temporal, yearly, out_dir: Path):
+    """Create the Markov/lag/stability views from the old analysis."""
+    markov_dir = out_dir / "03_markov_by_position" / "figures"
+    lag_dir = out_dir / "04_temporal_randomness" / "figures"
+    stability_dir = out_dir / "04b_temporal_stability" / "figures"
+
+    pooled = transitions[
+        (transitions.scope == "pooled") &
+        (transitions.transition_scope == "all_observed_draws")
+    ]
+    fig, axes = plt.subplots(2, 3, figsize=(14, 8), sharex=True, sharey=True)
+    axes = axes.flat
+    max_dev = max(0.01, pooled["deviation_from_uniform"].abs().max())
+    for pos in range(1, 6):
+        ax = axes[pos - 1]
+        part = pooled[pooled.position == pos]
+        matrix = part.pivot(index="previous_digit", columns="next_digit", values="deviation_from_uniform").reindex(index=range(10), columns=range(10)) * 100
+        image = ax.imshow(matrix, cmap="coolwarm", vmin=-max_dev * 100, vmax=max_dev * 100)
+        ax.set_title(f"Vị trí {pos}")
+        ax.set_xticks(range(10)); ax.set_yticks(range(10))
+        ax.set_xlabel("Sau"); ax.set_ylabel("Trước")
+    axes[-1].axis("off")
+    fig.suptitle("Ma trận chuyển tiếp Markov — độ lệch so với 10%", fontsize=14)
+    cbar_ax = fig.add_axes([0.91, 0.18, 0.018, 0.62])
+    fig.colorbar(image, cax=cbar_ax, label="Độ lệch (điểm phần trăm)")
+    fig.subplots_adjust(top=0.86, right=0.88, wspace=0.24, hspace=0.38)
+    fig.savefig(markov_dir / "01_transition_deviations.png", dpi=160)
+    plt.close(fig)
+
+    pooled_lags = lags[(lags.scope == "pooled") & (lags.lag_scope == "observed_lag")]
+    matrix = pooled_lags.pivot(index="position", columns="lag", values="cramers_v").reindex(index=range(1, 6))
+    fig, ax = plt.subplots(figsize=(14, 5))
+    image = ax.imshow(matrix, aspect="auto", cmap="viridis", vmin=0)
+    ax.set_title("Mức phụ thuộc theo độ trễ 1–30 kỳ — Cramér's V")
+    ax.set_xlabel("Độ trễ (kỳ)"); ax.set_ylabel("Vị trí")
+    ax.set_xticks(range(0, 30, 2), range(1, 31, 2)); ax.set_yticks(range(5), range(1, 6))
+    fig.colorbar(image, ax=ax, label="Cramér's V")
+    fig.tight_layout()
+    fig.savefig(lag_dir / "04_lag_dependence_cramers_v.png", dpi=160)
+    plt.close(fig)
+
+    pooled_stability = stability[stability.scope == "pooled"]
+    pivot = pooled_stability.pivot_table(index="position", columns="period", values="cramers_v", aggfunc="max")
+    fig, ax = plt.subplots(figsize=(10, 7))
+    image = ax.imshow(pivot.values, aspect="auto", cmap="viridis", vmin=0)
+    ax.set_title("Độ ổn định của phụ thuộc theo thời gian")
+    ax.set_xlabel("Giai đoạn"); ax.set_ylabel("Vị trí")
+    ax.set_xticks(range(len(pivot.columns)), pivot.columns)
+    ax.set_yticks(range(len(pivot.index)), [f"Vị trí {p}" for p in pivot.index])
+    fig.colorbar(image, ax=ax, label="Cramér's V")
+    fig.tight_layout()
+    fig.savefig(stability_dir / "05_temporal_stability.png", dpi=160)
     plt.close(fig)
 
     pooled_pos = position[position.scope == "pooled"].pivot(
@@ -308,7 +497,7 @@ def make_figures(digit, position, temporal, yearly, out_dir: Path):
     ax.set_title("Mức liên hệ giữa các vị trí — Cramér's V")
     fig.colorbar(image, ax=ax, label="Cramér's V")
     fig.tight_layout()
-    fig.savefig(fig_dir / "02_pooled_position_dependence.png", dpi=160)
+    fig.savefig(out_dir / "02_position_independence" / "figures" / "02_pooled_position_dependence.png", dpi=160)
     plt.close(fig)
 
     fig, (ax, ax_rare) = plt.subplots(1, 2, figsize=(14, 5.5), width_ratios=[2.2, 1], sharex=True)
@@ -332,7 +521,7 @@ def make_figures(digit, position, temporal, yearly, out_dir: Path):
     ax_rare.legend(frameon=False)
     fig.suptitle("Tỷ lệ ngày có thể trúng đồng thời nhiều giải\n(đã loại cặp tự động ĐB–khuyến khích ĐB)", fontsize=14)
     fig.tight_layout()
-    fig.savefig(fig_dir / "03_multi_win_rates_by_year.png", dpi=160)
+    fig.savefig(out_dir / "04_temporal_randomness" / "figures" / "03_multi_win_rates_by_year.png", dpi=160)
     plt.close(fig)
 
     # One compact diagnostic figure: only pooled tests, with FDR threshold.
@@ -356,13 +545,15 @@ def make_figures(digit, position, temporal, yearly, out_dir: Path):
     ax.grid(axis="y", alpha=0.25)
     ax.legend(frameon=False)
     fig.tight_layout()
-    fig.savefig(fig_dir / "04_pooled_test_significance.png", dpi=160)
+    fig.savefig(out_dir / "04b_temporal_stability" / "figures" / "04_pooled_test_significance.png", dpi=160)
     plt.close(fig)
 
 
-def write_report(df, digit, suffix, position, temporal, daily, yearly, out_dir: Path):
+def write_report(df, digit, suffix, position, temporal, daily, yearly, markov, lags, stability, out_dir: Path):
     def n_reject(frame):
         return int(frame["reject_fdr_05"].sum())
+    digit_tests = digit.drop_duplicates(["scope", "position"])
+    suffix_tests = int(suffix["valid_chi_square"].sum())
     report = f"""# Thống kê và kiểm định chữ số mới
 
 ## Phạm vi
@@ -377,16 +568,19 @@ def write_report(df, digit, suffix, position, temporal, daily, yearly, out_dir: 
 
 | Nhóm | Số kiểm định | Số bác bỏ H0 sau FDR |
 |---|---:|---:|
-| Phân phối chữ số | {len(digit.drop_duplicates(['scope','position']))} | {n_reject(digit.drop_duplicates(['scope','position']))} |
+| Phân phối chữ số | {len(digit_tests)} | {n_reject(digit_tests)} |
 | Phân phối đuôi số | {int(suffix["valid_chi_square"].sum())} hợp lệ / {len(suffix)} dòng | {n_reject(suffix)} |
 | Độc lập giữa vị trí | {len(position)} | {n_reject(position)} |
-| Phụ thuộc theo thời gian | {len(temporal)} | {n_reject(temporal)} |
+| Markov lag 1 | {len(markov)} | {n_reject(markov)} |
+| Phụ thuộc độ trễ 1–30 | {len(lags)} | {n_reject(lags)} |
+| Ổn định theo giai đoạn | {len(stability)} | {int(stability['reject_fdr_05_within_period'].sum())} |
 
 ## Trúng đồng thời nhiều giải
 
 - Tỷ lệ ngày có ít nhất 2 giải có thể cùng trúng: **{daily.has_2plus_prizes.mean():.2%}**.
 - Tỷ lệ ngày có ít nhất 3 giải có thể cùng trúng: **{daily.has_3plus_prizes.mean():.2%}**.
 - Tỷ lệ ngày có ít nhất 4 giải có thể cùng trúng: **{daily.has_4plus_prizes.mean():.2%}**.
+- Kiểm tra ổn định theo 3 giai đoạn: lưu toàn bộ kết quả tại `04b_temporal_stability/temporal_stability_by_period.csv`.
 
 Các bảng chi tiết và biểu đồ nằm trong cùng thư mục kết quả.
 """
@@ -399,19 +593,35 @@ def main():
     parser.add_argument("--output-dir", type=Path, default=Path("artifacts/statistics_new"))
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    sections = {
+        "01": args.output_dir / "01_digit_distribution",
+        "02": args.output_dir / "02_position_independence",
+        "03": args.output_dir / "03_markov_by_position",
+        "04": args.output_dir / "04_temporal_randomness",
+        "04b": args.output_dir / "04b_temporal_stability",
+    }
+    for folder in sections.values():
+        folder.mkdir(parents=True, exist_ok=True)
     df = load_data(args.input)
     digit = digit_distribution(df)
     suffix = suffix_distribution(df)
     position = position_independence(df)
     temporal = temporal_dependence(df)
     daily, yearly = build_daily_multi_win(df)
+    markov, transitions = markov_transition_tests(df)
+    lags = lag_dependence_tests(df)
+    stability = temporal_stability(df)
 
-    digit.to_csv(args.output_dir / "digit_distribution.csv", index=False, encoding="utf-8-sig")
-    suffix.to_csv(args.output_dir / "suffix_distribution.csv", index=False, encoding="utf-8-sig")
-    position.to_csv(args.output_dir / "position_independence.csv", index=False, encoding="utf-8-sig")
-    temporal.to_csv(args.output_dir / "temporal_dependence.csv", index=False, encoding="utf-8-sig")
-    daily.to_csv(args.output_dir / "multi_win_daily.csv", index=False, encoding="utf-8-sig")
-    yearly.to_csv(args.output_dir / "multi_win_yearly.csv", index=False, encoding="utf-8-sig")
+    digit.to_csv(sections["01"] / "digit_distribution.csv", index=False, encoding="utf-8-sig")
+    suffix.to_csv(sections["01"] / "suffix_distribution.csv", index=False, encoding="utf-8-sig")
+    position.to_csv(sections["02"] / "position_independence.csv", index=False, encoding="utf-8-sig")
+    temporal.to_csv(sections["04"] / "temporal_dependence_lag1.csv", index=False, encoding="utf-8-sig")
+    markov.to_csv(sections["03"] / "markov_tests_by_position.csv", index=False, encoding="utf-8-sig")
+    transitions.to_csv(sections["03"] / "markov_transition_probabilities.csv", index=False, encoding="utf-8-sig")
+    lags.to_csv(sections["04"] / "temporal_dependence_lags_01_30.csv", index=False, encoding="utf-8-sig")
+    daily.to_csv(sections["04"] / "multi_win_daily.csv", index=False, encoding="utf-8-sig")
+    yearly.to_csv(sections["04"] / "multi_win_yearly.csv", index=False, encoding="utf-8-sig")
+    stability.to_csv(sections["04b"] / "temporal_stability_by_period.csv", index=False, encoding="utf-8-sig")
 
     metadata = {
         "input": str(args.input), "n_rows": int(len(df)), "n_dates": int(df.date.nunique()),
@@ -421,7 +631,8 @@ def main():
     }
     (args.output_dir / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
     make_figures(digit, position, temporal, yearly, args.output_dir)
-    write_report(df, digit, suffix, position, temporal, daily, yearly, args.output_dir)
+    make_extended_figures(markov, transitions, lags, stability, digit, position, temporal, yearly, args.output_dir)
+    write_report(df, digit, suffix, position, temporal, daily, yearly, markov, lags, stability, args.output_dir)
 
     print(f"Rows: {len(df):,}; dates: {df.date.nunique():,}; range: {df.date.min().date()} -> {df.date.max().date()}")
     print(f"2+ prizes: {daily.has_2plus_prizes.mean():.2%}; 3+: {daily.has_3plus_prizes.mean():.2%}; 4+: {daily.has_4plus_prizes.mean():.2%}")
