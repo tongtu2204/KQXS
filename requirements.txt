@@ -1,9 +1,0 @@
-beautifulsoup4
-catboost
-matplotlib
-numpy
-pandas
-requests
-scikit-learn
-scipy
-seaborn
