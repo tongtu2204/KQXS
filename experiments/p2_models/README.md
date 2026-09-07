@@ -44,3 +44,9 @@ artifacts/tables_daily/model_daily_scores.csv.gz
 artifacts/figures_daily/model_brier_final.png
 ```
 
+
+## Model boosting
+
+- `03_boosted_daily_models.py`: XGBoost và CatBoost, mỗi model gồm 50 classifier nhị phân cho 5 vị trí × 10 chữ số.
+- Cài dependency bằng `python -m pip install -r requirements.txt`.
+- Kết quả được đánh giá cùng protocol và metric của `02_daily_model_evaluation.py`.
