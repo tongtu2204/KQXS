@@ -23,15 +23,17 @@ quả nào của ngày. Vì vậy, ví dụ dự đoán chữ số `3` ở hàng
   hoặc không xuất hiện của ngày trước;
 - `random_forest`: học từ các vector target trễ 1, 2, 3, 7, 14 và 30 ngày.
 
-Các mô hình thống kê được khởi tạo bằng dữ liệu trước giai đoạn test. Mỗi
-fold tạo dự báo từ lịch sử trước ngày bắt đầu; final test 2025–2026 không được
-dùng để lựa chọn mô hình.
+Các mô hình thống kê được khởi tạo bằng dữ liệu trước giai đoạn validation.
+Phần 2 chỉ dùng validation 2023–2024 để tuning/chọn model. Giai đoạn
+2025–2026 được giữ riêng cho đánh giá chiến lược ở Phần 3.
 
 ## Chạy lại
 
 ```bash
 python experiments/p2_models/00_prepare_daily_targets.py
 python experiments/p2_models/01_daily_digit_models.py
+python experiments/p2_models/02_daily_model_evaluation.py
+python experiments/p2_models/03_boosted_daily_models.py
 ```
 
 Kết quả nằm tại:
@@ -50,3 +52,4 @@ artifacts/figures_daily/model_brier_final.png
 - `03_boosted_daily_models.py`: XGBoost và CatBoost, mỗi model gồm 50 classifier nhị phân cho 5 vị trí × 10 chữ số.
 - Cài dependency bằng `python -m pip install -r requirements.txt`.
 - Kết quả được đánh giá cùng protocol và metric của `02_daily_model_evaluation.py`.
+
