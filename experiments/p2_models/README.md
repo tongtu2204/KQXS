@@ -40,10 +40,14 @@ Kết quả nằm tại:
 
 ```text
 data/processed/daily_digit_targets.csv
-artifacts/models_daily/model_daily_probabilities.csv.gz
-artifacts/tables_daily/model_summary.csv
-artifacts/tables_daily/model_daily_scores.csv.gz
-artifacts/figures_daily/model_brier_final.png
+artifacts/p2_models/model_summary.csv
+artifacts/p2_models/daily_scores.csv.gz
+artifacts/p2_models/actual_digit_ranks.csv.gz
+artifacts/p2_models/rank_summary.csv
+artifacts/p2_models/calibration.csv
+artifacts/p2_models/boosted/boosted_summary.csv
+artifacts/p2_models/boosted/boosted_calibration.csv
+artifacts/p2_models/figures/
 ```
 
 
@@ -52,4 +56,3 @@ artifacts/figures_daily/model_brier_final.png
 - `03_boosted_daily_models.py`: XGBoost và CatBoost, mỗi model gồm 50 classifier nhị phân cho 5 vị trí × 10 chữ số.
 - Cài dependency bằng `python -m pip install -r requirements.txt`.
 - Kết quả được đánh giá cùng protocol và metric của `02_daily_model_evaluation.py`.
-
