@@ -24,7 +24,6 @@ TABLE_DIR = PROJECT_DIR / "artifacts" / "models" / "daily_digit"
 FIGURE_DIR = TABLE_DIR / "figures"
 FOLDS = {
     "validation_2023_2024": ("2023-01-01", "2024-12-31", "2022-12-31"),
-    "final_test_2025_2026": ("2025-01-01", "2026-12-31", "2024-12-31"),
 }
 MODEL_NAMES = (
     "uniform_27_iid",
@@ -178,8 +177,8 @@ def main() -> None:
     ranks.to_csv(TABLE_DIR / "actual_digit_ranks.csv.gz", index=False, compression="gzip")
     rank_summary.to_csv(TABLE_DIR / "rank_summary.csv", index=False)
     calibration.to_csv(TABLE_DIR / "calibration.csv", index=False)
-    final = summary[summary.fold.eq("final_test_2025_2026")].sort_values("brier_score")
-    plt.figure(figsize=(11, 5)); plt.bar(final.model, final.brier_score); plt.xticks(rotation=35, ha="right"); plt.ylabel("Daily multi-label Brier score"); plt.title("Phần 2 — so sánh model trên final test"); plt.tight_layout(); plt.savefig(FIGURE_DIR / "brier_final.png", dpi=180); plt.close()
+    final = summary[summary.fold.eq("validation_2023_2024")].sort_values("brier_score")
+    plt.figure(figsize=(11, 5)); plt.bar(final.model, final.brier_score); plt.xticks(rotation=35, ha="right"); plt.ylabel("Daily multi-label Brier score"); plt.title("Phần 2 — so sánh model trên validation 2023–2024"); plt.tight_layout(); plt.savefig(FIGURE_DIR / "brier_validation.png", dpi=180); plt.close()
     print(summary.sort_values(["fold", "brier_score"]).to_string(index=False))
 
 
