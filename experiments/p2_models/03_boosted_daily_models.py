@@ -105,6 +105,14 @@ def main():
         for model_name in ("xgboost", "catboost"):
             output = []
             for column in cols:
+                # Một số chữ số xuất hiện trong gần như mọi ngày ở các vị trí
+                # thấp. Khi train chỉ có một class, tree booster không thể fit;
+                # dùng posterior Beta-smoothed làm dự báo hợp lệ.
+                unique = y_train[column].unique()
+                if len(unique) < 2:
+                    constant = (y_train[column].sum() + 1) / (len(y_train) + 2)
+                    output.append(np.full(len(x_test), constant))
+                    continue
                 model = make_model(model_name)
                 model.fit(x_train, y_train[column])
                 output.append(aligned_probability(model, x_test))
