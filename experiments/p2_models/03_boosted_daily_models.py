@@ -19,7 +19,6 @@ DATA_FILE = PROJECT_DIR / "data" / "processed" / "daily_digit_targets.csv"
 OUTPUT_DIR = PROJECT_DIR / "artifacts" / "models" / "daily_digit" / "boosted"
 FOLDS = {
     "validation_2023_2024": ("2023-01-01", "2024-12-31", "2022-12-31"),
-    "final_test_2025_2026": ("2025-01-01", "2026-12-31", "2024-12-31"),
 }
 
 
