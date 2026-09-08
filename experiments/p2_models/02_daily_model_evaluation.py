@@ -20,7 +20,7 @@ if str(PROJECT_DIR) not in sys.path:
 
 POSITIONS = ("ten_thousands", "thousands", "hundreds", "tens", "units")
 DATA_FILE = PROJECT_DIR / "data" / "processed" / "daily_digit_targets.csv"
-TABLE_DIR = PROJECT_DIR / "artifacts" / "models" / "daily_digit"
+TABLE_DIR = PROJECT_DIR / "artifacts" / "p2_models"
 FIGURE_DIR = TABLE_DIR / "figures"
 FOLDS = {
     "validation_2023_2024": ("2023-01-01", "2024-12-31", "2022-12-31"),
@@ -184,4 +184,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
