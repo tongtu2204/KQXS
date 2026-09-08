@@ -16,7 +16,7 @@ if str(PROJECT_DIR) not in sys.path:
 
 POSITIONS = ("ten_thousands", "thousands", "hundreds", "tens", "units")
 DATA_FILE = PROJECT_DIR / "data" / "processed" / "daily_digit_targets.csv"
-OUTPUT_DIR = PROJECT_DIR / "artifacts" / "models" / "daily_digit" / "boosted"
+OUTPUT_DIR = PROJECT_DIR / "artifacts" / "p2_models" / "boosted"
 FOLDS = {
     "validation_2023_2024": ("2023-01-01", "2024-12-31", "2022-12-31"),
 }
@@ -73,7 +73,7 @@ def aligned_probability(model, x):
 
 
 def evaluate(model_name, fold, dates, probabilities, actual):
-    rows = []
+    rows, calibration_rows = [], []
     for i, date in enumerate(dates):
         p, y = probabilities[i], actual[i]
         row = {
@@ -85,15 +85,28 @@ def evaluate(model_name, fold, dates, probabilities, actual):
             top = np.argsort(-p, axis=1)[:, :k]
             row[f"hit_any_top{k}"] = np.mean([bool(y[pos, top[pos]].any()) for pos in range(5)])
             row[f"recall_top{k}"] = sum(y[pos, top[pos]].sum() for pos in range(5)) / max(y.sum(), 1)
+        for pos, position in enumerate(POSITIONS):
+            row[f"brier_{position}"] = float(np.mean((p[pos] - y[pos]) ** 2))
+        flat_p, flat_y = p.ravel(), y.ravel()
+        for bin_id in range(10):
+            low, high = bin_id / 10, (bin_id + 1) / 10
+            mask = (flat_p >= low) & (flat_p < high if bin_id < 9 else flat_p <= high)
+            if mask.any():
+                calibration_rows.append({
+                    "model": model_name, "fold": fold, "bin": bin_id,
+                    "mean_predicted": float(flat_p[mask].mean()),
+                    "observed_rate": float(flat_y[mask].mean()),
+                    "n": int(mask.sum()),
+                })
         rows.append(row)
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows), pd.DataFrame(calibration_rows)
 
 
 def main():
     data = pd.read_csv(DATA_FILE, parse_dates=["date"]).sort_values("date").reset_index(drop=True)
     cols = target_columns()
     features = build_features(data)
-    summary, probabilities, daily = [], [], []
+    summary, probabilities, daily, calibration = [], [], [], []
     for fold, (start_text, end_text, history_text) in FOLDS.items():
         start, end, history_end = map(pd.Timestamp, (start_text, end_text, history_text))
         train = (data.date <= history_end) & features.notna().all(axis=1)
@@ -117,17 +130,18 @@ def main():
                 output.append(aligned_probability(model, x_test))
             p = np.column_stack(output).reshape(-1, 5, 10)
             y = y_test.to_numpy(dtype=int).reshape(-1, 5, 10)
-            d = evaluate(model_name, fold, dates, p, y)
+            d, c = evaluate(model_name, fold, dates, p, y)
             daily.append(d)
+            calibration.append(c)
             summary.append({"model": model_name, "fold": fold, "n_days": len(d), **{c: d[c].mean() for c in d.columns if c not in {"date", "model", "fold"}}})
             probabilities.append(pd.DataFrame(p.reshape(len(p), 50), columns=[f"p_{c}" for c in cols]).assign(date=dates, model=model_name, fold=fold))
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(summary).to_csv(OUTPUT_DIR / "boosted_summary.csv", index=False)
     pd.concat(daily, ignore_index=True).to_csv(OUTPUT_DIR / "boosted_daily_scores.csv.gz", index=False, compression="gzip")
     pd.concat(probabilities, ignore_index=True).to_csv(OUTPUT_DIR / "boosted_probabilities.csv.gz", index=False, compression="gzip")
+    pd.concat(calibration, ignore_index=True).to_csv(OUTPUT_DIR / "boosted_calibration.csv", index=False)
     print(pd.DataFrame(summary).to_string(index=False))
 
 
 if __name__ == "__main__":
     main()
-
