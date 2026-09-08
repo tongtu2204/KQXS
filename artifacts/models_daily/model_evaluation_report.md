@@ -7,7 +7,8 @@
 - Một chữ số được ghi nhận là actual nếu xuất hiện ít nhất một lần ở vị trí đó
   trong bất kỳ kết quả nào của ngày.
 - Validation: 2023–2024, 723 ngày.
-- Final test: 2025–2026, 606 ngày.
+- Final test 2025–2026 không được dùng trong Phần 2; giai đoạn này dành riêng
+  cho đánh giá chiến lược ở Phần 3.
 - Với model thống kê, ngày `t` chỉ dùng dữ liệu trước `t`, sau đó mới cập nhật
   trạng thái cho ngày tiếp theo.
 
@@ -27,9 +28,8 @@ tế. Các bảng chi tiết nằm trong cùng thư mục `artifacts/models/dail
 | Fold | Model tốt nhất | Brier | Log loss |
 | --- | --- | ---: | ---: |
 | Validation 2023–2024 | expanding_beta | 0,097820 | 0,329968 |
-| Final 2025–2026 | expanding_beta | 0,096307 | 0,325100 |
 
-`markov_presence` đứng rất sát `expanding_beta` trên cả hai fold. Random Forest
+`markov_presence` đứng rất sát `expanding_beta` trên validation. Random Forest
 có tỷ lệ hit Top-1 tương đối cao nhưng không vượt ổn định về Brier/log loss.
 Các vị trí hàng chục nghìn và hàng nghìn khó dự đoán hơn các vị trí thấp hơn;
 điều này thể hiện qua Brier theo vị trí.
