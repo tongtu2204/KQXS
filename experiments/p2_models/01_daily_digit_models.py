@@ -20,12 +20,11 @@ if str(PROJECT_DIR) not in sys.path:
 POSITION_NAMES = ("ten_thousands", "thousands", "hundreds", "tens", "units")
 
 DATA_FILE = PROJECT_DIR / "data" / "processed" / "daily_digit_targets.csv"
-ARTIFACT_DIR = PROJECT_DIR / "artifacts" / "models_daily"
-TABLE_DIR = PROJECT_DIR / "artifacts" / "tables_daily"
-FIGURE_DIR = PROJECT_DIR / "artifacts" / "figures_daily"
+ARTIFACT_DIR = PROJECT_DIR / "artifacts" / "p2_models" / "baseline"
+TABLE_DIR = ARTIFACT_DIR
+FIGURE_DIR = ARTIFACT_DIR / "figures"
 FOLDS = {
     "validation_2023_2024": ("2023-01-01", "2024-12-31", "2022-12-31"),
-    "final_test_2025_2026": ("2025-01-01", "2026-12-31", "2024-12-31"),
 }
 
 
@@ -160,12 +159,11 @@ def main() -> None:
     summary.to_csv(TABLE_DIR / "model_summary.csv", index=False)
     daily.to_csv(TABLE_DIR / "model_daily_scores.csv.gz", index=False, compression="gzip")
     probabilities.to_csv(ARTIFACT_DIR / "model_daily_probabilities.csv.gz", index=False, compression="gzip")
-    plot = summary[summary.fold.eq("final_test_2025_2026")].sort_values("brier_score")
-    plt.figure(figsize=(10, 5)); plt.bar(plot.model, plot.brier_score); plt.xticks(rotation=30, ha="right"); plt.ylabel("Daily multi-label Brier score"); plt.title("Phần 2: so sánh mô hình trên final test"); plt.tight_layout(); plt.savefig(FIGURE_DIR / "model_brier_final.png", dpi=180); plt.close()
+    plot = summary[summary.fold.eq("validation_2023_2024")].sort_values("brier_score")
+    plt.figure(figsize=(10, 5)); plt.bar(plot.model, plot.brier_score); plt.xticks(rotation=30, ha="right"); plt.ylabel("Daily multi-label Brier score"); plt.title("Phần 2: so sánh baseline trên validation 2023–2024"); plt.tight_layout(); plt.savefig(FIGURE_DIR / "baseline_brier_validation.png", dpi=180); plt.close()
     print(summary.to_string(index=False))
     print(f"\nĐã ghi artifacts vào: {ARTIFACT_DIR}")
 
 
 if __name__ == "__main__":
     main()
-
