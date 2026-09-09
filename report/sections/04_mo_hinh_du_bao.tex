@@ -1,0 +1,26 @@
+\chapter{MÔ HÌNH DỰ BÁO CHỮ SỐ}
+\section{Biến mục tiêu}
+Với mỗi vị trí và chữ số, mục tiêu bằng 1 nếu chữ số xuất hiện trong ít nhất một của 27 kết quả trong ngày, bằng 0 nếu không xuất hiện. Đây là bài toán phân loại nhị phân nhiều đầu ra, khác với đoán chính xác một số duy nhất từ 00 đến 99.
+
+\section{Mô hình}
+Đường cơ sở là Uniform 27-IID. Nhóm xác suất gồm Dirichlet daily, Expanding Beta, Rolling Beta cửa sổ 30, 90, 365 và Markov presence. Nhóm học máy gồm Random Forest, CatBoost và XGBoost. Mọi mô hình được đánh giá theo walk-forward.
+
+\begin{table}[H]\centering
+\caption{Kết quả validation 2023--2024}
+\begin{tabular}{lrr}\toprule
+Mô hình & Brier score & Log loss\\\midrule
+Expanding Beta & 0.097820 & 0.329968\\
+Markov presence & 0.097853 & 0.330118\\
+Rolling Beta 365 & 0.097973 & 0.330935\\
+CatBoost & 0.098313 & 0.332414\\
+Random Forest & 0.098615 & 0.333515\\
+XGBoost & 0.099221 & 0.336660\\
+Rolling Beta 90 & 0.098779 & 0.335109\\
+Rolling Beta 30 & 0.100920 & 0.343546\\
+Dirichlet daily & 0.112701 & 0.397621\\
+Uniform 27-IID & 0.113875 & 0.408108\\\bottomrule
+\end{tabular}\end{table}
+
+Expanding Beta tốt nhất trên validation theo Brier score và log loss. CatBoost là mô hình học máy tốt nhất nhưng chưa vượt nhóm Bayesian/Markov. Trên final test 2025--2026, Expanding Beta đạt Brier 0.104579 và log loss 0.351395; Uniform lần lượt 0.104588 và 0.351453, chênh lệch rất nhỏ.
+
+\IfFileExists{../artifacts/p2_models/figures/01_brier_by_model.svg}{\begin{figure}[H]\centering\includegraphics[width=\linewidth]{../artifacts/p2_models/figures/01_brier_by_model.svg}\caption{Brier score theo mô hình.}\end{figure}}{}
