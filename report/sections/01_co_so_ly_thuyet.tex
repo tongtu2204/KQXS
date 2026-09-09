@@ -1,0 +1,38 @@
+\chapter{CƠ SỞ LÝ THUYẾT}
+\section{Bài toán nghiên cứu}
+Mỗi ngày xổ số tạo ra nhiều kết quả thuộc các giải khác nhau. Nghiên cứu tập trung vào chữ số theo vị trí và hai chữ số cuối. Mục tiêu thứ nhất là kiểm tra dữ liệu có phù hợp với cơ chế ngẫu nhiên hay không. Mục tiêu thứ hai là xây dựng xác suất từ dữ liệu quá khứ và kiểm tra khả năng cải thiện ngoài mẫu.
+
+\section{Ngẫu nhiên và độc lập}
+Một dãy quan sát phù hợp với mô hình ngẫu nhiên cơ bản nếu các chữ số có phân phối gần đồng đều, các vị trí không có phụ thuộc đáng kể, kết quả ngày hôm nay không cung cấp thông tin có hệ thống cho ngày mai, và đặc trưng không thay đổi giữa các giai đoạn. Không bác bỏ $H_0$ không chứng minh tuyệt đối tính độc lập.
+
+\section{Các kiểm định}
+Với tần suất quan sát $O_k$ và kỳ vọng $E_k$, thống kê Chi-square là
+\[
+\chi^2=\sum_{k=1}^{K}\frac{(O_k-E_k)^2}{E_k}.
+\]
+Phụ thuộc giữa hai biến phân loại có thể mô tả bằng Cramér's V:
+\[
+V=\sqrt{\frac{\chi^2}{N\min(r-1,c-1)}}.
+\]
+Với nhiều kiểm định, báo cáo dùng hiệu chỉnh Benjamini--Hochberg và ngưỡng $q<0.05$ để kiểm soát false discovery rate.
+
+\section{Mô hình xác suất}
+Phân phối Beta là tiên nghiệm liên hợp cho xác suất nhị phân:
+\[
+p\sim\operatorname{Beta}(\alpha,\beta),\qquad
+p\mid D\sim\operatorname{Beta}(\alpha+s,\beta+f).
+\]
+Mô hình Expanding Beta dùng toàn bộ lịch sử trước ngày dự báo; Rolling Beta chỉ dùng cửa sổ gần nhất. Mô hình Markov bậc một giả định $P(Y_t\mid Y_{t-1},\ldots)=P(Y_t\mid Y_{t-1})$.
+
+\section{Đánh giá xác suất và lợi nhuận}
+Brier score và log loss lần lượt là
+\[
+\operatorname{BS}=\frac{1}{n}\sum_i(\hat p_i-y_i)^2,
+\quad
+\operatorname{LL}=-\frac{1}{n}\sum_i[y_i\log\hat p_i+(1-y_i)\log(1-\hat p_i)].
+\]
+Với chi phí $c$ cho mỗi số và tiền trả $r$, mua $m$ số có lợi nhuận ngày
+\[
+\Pi_t=rI_t-mc,\qquad h_{\mathrm{BE}}=\frac{mc}{r}.
+\]
+Trong thí nghiệm, $c=10\,000$ VND và $r=800\,000$ VND.
