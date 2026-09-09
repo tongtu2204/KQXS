@@ -26,6 +26,7 @@ FIGURE_DIR = ARTIFACT_DIR / "figures"
 FOLDS = {
     "validation_2023_2024": ("2023-01-01", "2024-12-31", "2022-12-31"),
 }
+ELIGIBLE_COUNTS = (10, 20, 23, 27, 27)
 
 
 def load_data() -> pd.DataFrame:
@@ -42,10 +43,12 @@ def model_probability(name: str, history: pd.DataFrame, dates: pd.Series) -> np.
     """Return n_days x 50 probabilities using history strictly before dates."""
     columns = target_columns()
     if name == "uniform_27_iid":
-        # Baseline Uniform ở cấp độ ngày: P(digit xuất hiện >= 1 lần trong
-        # 27 kết quả) = 1 - (1 - 0.1)^27.
-        daily_probability = 1 - (1 - 0.1) ** 27
-        return np.full((len(dates), len(columns)), daily_probability)
+        # Short prizes contribute only to their existing right-aligned
+        # positions, so the number of eligible draws differs by position.
+        daily_probability = np.concatenate([
+            np.full(10, 1 - 0.9 ** count) for count in ELIGIBLE_COUNTS
+        ])
+        return np.tile(daily_probability, (len(dates), 1))
     if name == "expanding_frequency":
         p = history[columns].mean().to_numpy(dtype=float)
         return np.tile(p, (len(dates), 1))

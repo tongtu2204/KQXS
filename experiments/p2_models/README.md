@@ -1,4 +1,9 @@
-# Phần 2 — Mô hình dự đoán chữ số theo ngày
+# Phần 2 — Mô hình dự đoán pool và từng giải
+
+Phần 2 được tách thành hai bài toán độc lập nhưng dùng chung dữ liệu đầy đủ
+27 kết quả mỗi ngày trong `data/raw/kqxsmb_all_prizes_2007_2026.csv`.
+
+## P2A — dự đoán pool chữ số của cả ngày
 
 ## Đơn vị đánh giá
 
@@ -10,8 +15,10 @@ target[position, digit] = 1
 ```
 
 nếu chữ số đó xuất hiện ít nhất một lần ở vị trí tương ứng trong bất kỳ kết
-quả nào của ngày. Vì vậy, ví dụ dự đoán chữ số `3` ở hàng đơn vị được tính
-đúng nếu `3` xuất hiện ở hàng đơn vị của ít nhất một trong 27 kết quả.
+quả nào của ngày. Các giải ngắn được căn phải: giải 4 chữ số chỉ đóng góp vào
+4 vị trí cuối, không tạo chữ số `0` giả ở đầu. File chuẩn bị dữ liệu cũng lưu
+`eligible_count`, số lần xuất hiện của từng chữ số và toàn bộ `pool_numbers`
+để P3 sinh tổ hợp.
 
 ## Mô hình
 
@@ -23,9 +30,20 @@ quả nào của ngày. Vì vậy, ví dụ dự đoán chữ số `3` ở hàng
   hoặc không xuất hiện của ngày trước;
 - `random_forest`: học từ các vector target trễ 1, 2, 3, 7, 14 và 30 ngày.
 
-Các mô hình thống kê được khởi tạo bằng dữ liệu trước giai đoạn validation.
-Phần 2 chỉ dùng validation 2023–2024 để tuning/chọn model. Giai đoạn
-2025–2026 được giữ riêng cho đánh giá chiến lược ở Phần 3.
+## P2B — dự đoán đích danh từng giải
+
+Mỗi target là một slot cụ thể `prize + prize_index` (ví dụ `Giải ba_4`),
+không chỉ là giải đặc biệt. Mô hình dự đoán phân phối chữ số theo vị trí của
+đúng slot đó, sinh danh sách Top-k số và chấm hit theo đúng độ dài của giải.
+Không dùng ký tự phụ đặc biệt; các pool/độ dài được lấy trực tiếp từ dữ liệu
+full-prize.
+
+Protocol của Phần 2:
+
+- lịch sử huấn luyện: từ 2007 đến hết 2022;
+- validation: 2023–2024;
+- 2025–2026 không dùng trong Phần 2, được khóa riêng để đánh giá chiến lược
+  thực tế ở Phần 3.
 
 ## Chạy lại
 
@@ -34,6 +52,8 @@ python experiments/p2_models/00_prepare_daily_targets.py
 python experiments/p2_models/01_daily_digit_models.py
 python experiments/p2_models/02_daily_model_evaluation.py
 python experiments/p2_models/03_boosted_daily_models.py
+python experiments/p2_models/04_prize_target_models.py
+python experiments/p2_models/05_boosted_prize_target_models.py
 ```
 
 Kết quả nằm tại:
@@ -48,6 +68,10 @@ artifacts/p2_models/calibration.csv
 artifacts/p2_models/boosted/boosted_summary.csv
 artifacts/p2_models/boosted/boosted_calibration.csv
 artifacts/p2_models/figures/
+artifacts/p2_models/prize_target/prize_target_predictions.csv.gz
+artifacts/p2_models/prize_target/prize_target_summary.csv
+artifacts/p2_models/prize_target_boosted/boosted_prize_target_predictions.csv.gz
+artifacts/p2_models/prize_target_boosted/boosted_prize_target_summary.csv
 ```
 
 

@@ -25,6 +25,9 @@ FIGURE_DIR = TABLE_DIR / "figures"
 FOLDS = {
     "validation_2023_2024": ("2023-01-01", "2024-12-31", "2022-12-31"),
 }
+# Number of results that genuinely contain each left-to-right position in a
+# 27-result Northern pool.  Short prizes contribute suffixes only.
+ELIGIBLE_COUNTS = (10, 20, 23, 27, 27)
 MODEL_NAMES = (
     "uniform_27_iid",
     "expanding_beta",
@@ -56,7 +59,7 @@ def statistical_probability(model: str, history: pd.DataFrame) -> np.ndarray:
     for position_index, position in enumerate(POSITIONS):
         x = history[[f"{position}_d{digit}" for digit in range(10)]].to_numpy(dtype=float)
         if model == "uniform_27_iid":
-            result[position_index] = 1 - 0.9 ** 27
+            result[position_index] = 1 - 0.9 ** ELIGIBLE_COUNTS[position_index]
         elif model == "expanding_beta":
             result[position_index] = (x.sum(axis=0) + 1) / (len(x) + 2)
         elif model.startswith("rolling_beta_w"):
@@ -68,7 +71,7 @@ def statistical_probability(model: str, history: pd.DataFrame) -> np.ndarray:
             # sau đó đổi sang xác suất xuất hiện >= 1 lần trong 27 kết quả.
             counts = x.sum(axis=0) + 1
             per_draw = counts / counts.sum()
-            result[position_index] = 1 - (1 - per_draw) ** 27
+            result[position_index] = 1 - (1 - per_draw) ** ELIGIBLE_COUNTS[position_index]
         elif model == "markov_presence":
             previous, current = x[:-1], x[1:]
             last = x[-1]
@@ -178,7 +181,7 @@ def main() -> None:
     rank_summary.to_csv(TABLE_DIR / "rank_summary.csv", index=False)
     calibration.to_csv(TABLE_DIR / "calibration.csv", index=False)
     final = summary[summary.fold.eq("validation_2023_2024")].sort_values("brier_score")
-    plt.figure(figsize=(11, 5)); plt.bar(final.model, final.brier_score); plt.xticks(rotation=35, ha="right"); plt.ylabel("Daily multi-label Brier score"); plt.title("Phần 2 — so sánh model trên validation 2023–2024"); plt.tight_layout(); plt.savefig(FIGURE_DIR / "brier_validation.png", dpi=180); plt.close()
+    plt.figure(figsize=(11, 5)); plt.bar(final.model, final.brier_score); plt.xticks(rotation=35, ha="right"); plt.ylabel("Daily multi-label Brier score"); plt.title("Phần 2A — so sánh model trên validation 2023–2024"); plt.tight_layout(); plt.savefig(FIGURE_DIR / "brier_validation.png", dpi=180); plt.close()
     print(summary.sort_values(["fold", "brier_score"]).to_string(index=False))
 
 
