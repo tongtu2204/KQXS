@@ -1,0 +1,17 @@
+\chapter{KẾT QUẢ TỔNG HỢP VÀ THẢO LUẬN}
+\section{Từ kiểm định đến dự báo}
+Phần 1 không tìm thấy phụ thuộc thời gian có hệ thống sau hiệu chỉnh nhiều kiểm định. Vì vậy, mô hình dự báo được xem là phép kiểm tra thực nghiệm về khả năng cải thiện ngoài mẫu, không phải giả định rằng dữ liệu chắc chắn có quy luật.
+
+\section{So sánh mô hình}
+Expanding Beta đứng đầu validation, trong khi CatBoost là mô hình học máy tốt nhất. Tuy nhiên chênh lệch giữa Expanding Beta và Uniform trên final test rất nhỏ. Top-$k$ cao ở $k$ lớn một phần do mục tiêu có độ phủ nhiều chữ số; không nên diễn giải như đoán một số duy nhất từ 00--99.
+
+\section{Ý nghĩa thực tiễn}
+Lợi nhuận dương trong một giai đoạn không đủ chứng minh lợi thế dài hạn. Nếu kết quả không tái lập ở giai đoạn khác, kết luận phù hợp là hiệu năng chưa ổn định. Cần báo cáo khoảng tin cậy, nhiều giai đoạn rolling và số lần thử chiến lược.
+
+\section{Hạn chế}
+\begin{itemize}
+\item Cách định nghĩa mục tiêu theo 27 kết quả ảnh hưởng mạnh đến độ khó.
+\item Nhiều kiểm định và cấu hình làm tăng nguy cơ dương tính giả.
+\item Final test chỉ phản ánh dữ liệu đã thu thập đến thời điểm báo cáo.
+\item Lợi nhuận mẫu nhỏ có thể bị chi phối bởi một vài lần trúng.
+\end{itemize}
