@@ -1,0 +1,10 @@
+\chapter{KẾT LUẬN}
+Báo cáo đã xây dựng quy trình gồm kiểm định thống kê, mô hình xác suất và backtest chiến lược cho dữ liệu xổ số miền Bắc. Quy trình walk-forward và tách validation khỏi final test giúp hạn chế rò rỉ thông tin.
+
+Các kiểm định không cho thấy bằng chứng mạnh về phụ thuộc vị trí, Markov hoặc phụ thuộc thời gian ở lag 1--30 sau hiệu chỉnh FDR. Một số sai lệch cục bộ trong phân phối chữ số và đuôi số tồn tại, nhưng chưa đủ để suy ra quy luật dự báo tổng quát.
+
+Expanding Beta là mô hình tốt nhất trên validation theo Brier score và log loss; trên final test, lợi thế so với Uniform rất nhỏ. Các mô hình học máy không vượt rõ rệt các baseline xác suất đơn giản.
+
+Kết luận cuối cùng là chưa có bằng chứng đủ mạnh để khẳng định chiến lược có lợi nhuận bền vững. Lợi nhuận của một giai đoạn chỉ là kết quả backtest có điều kiện; cần khóa cấu hình trước, mở rộng final test và kiểm tra khả năng tái lập ở nhiều giai đoạn.
+
+Nghiên cứu không nhằm khuyến khích đặt cược, mà nhằm kiểm tra bằng phương pháp thống kê liệu dữ liệu có chứa tín hiệu ổn định vượt baseline hay không.
