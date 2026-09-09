@@ -1,0 +1,51 @@
+% !TeX program = xelatex
+\documentclass[a4paper,12pt,oneside]{book}
+\usepackage{fontspec}
+\usepackage{polyglossia}
+\setdefaultlanguage{vietnamese}
+\IfFontExistsTF{Times New Roman}{\setmainfont{Times New Roman}}{\setmainfont{Liberation Serif}}
+\IfFontExistsTF{Arial}{\setsansfont{Arial}}{\setsansfont{Liberation Sans}}
+\usepackage[left=3.5cm,right=2cm,top=2cm,bottom=2cm]{geometry}
+\usepackage{amsmath,amssymb,mathtools,graphicx,booktabs,longtable,tabularx,array,multirow,float,placeins,xcolor,enumitem,caption,url,xurl,hyperref,fancyhdr,titlesec,indentfirst,siunitx}
+\setlength{\parindent}{1.2cm}
+\linespread{1.25}\selectfont
+\setlist[itemize]{leftmargin=1.6em,itemsep=2pt,topsep=3pt}
+\captionsetup{font=normalsize,labelfont=bf,labelsep=period,justification=centering,skip=6pt}
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=blue!55!black}
+\titleformat{\chapter}[display]{\normalfont\Large\bfseries\centering}{\chaptertitlename\ \thechapter}{0pt}{\Large}
+\titlespacing*{\chapter}{0pt}{0pt}{15pt}
+\titleformat*{\section}{\bfseries\fontsize{13}{16}\selectfont}
+\titleformat*{\subsection}{\bfseries\fontsize{13}{16}\selectfont}
+\renewcommand{\chaptername}{CHƯƠNG}
+\renewcommand{\contentsname}{MỤC LỤC}
+\renewcommand{\listfigurename}{DANH MỤC HÌNH VẼ}
+\renewcommand{\listtablename}{DANH MỤC BẢNG BIỂU}
+\renewcommand{\figurename}{Hình}
+\renewcommand{\tablename}{Bảng}
+\numberwithin{equation}{chapter}
+\newcommand{\safeimage}[2]{\IfFileExists{#1}{\begin{figure}[H]\centering\includegraphics[width=\linewidth]{#1}\caption{#2}\end{figure}}{\begin{figure}[H]\centering\fbox{\parbox{0.85\linewidth}{\centering Chưa có tệp hình: \texttt{#1}}}\caption{#2}\end{figure}}}
+\begin{document}
+\begin{titlepage}\centering
+{\large TRƯỜNG ĐẠI HỌC\par}\vspace{0.8cm}
+{\Large\bfseries BÁO CÁO NGHIÊN CỨU\par}\vspace{1cm}
+{\LARGE\bfseries KIỂM ĐỊNH TÍNH NGẪU NHIÊN\\ VÀ DỰ BÁO HAI CHỮ SỐ CUỐI XỔ SỐ MIỀN BẮC\par}
+\vspace{1cm}{\large Phân tích thống kê, mô hình xác suất và đánh giá chiến lược\par}\vfill
+\begin{flushleft}\textbf{Sinh viên:} Trần Thế Tài\\
+\textbf{Dữ liệu:} Kết quả xổ số miền Bắc, 2007--2026\\
+\textbf{Ngày cập nhật:} 09/2026\end{flushleft}\vfill{\large Hà Nội, 2026\par}
+\end{titlepage}
+\frontmatter
+\chapter*{Tóm tắt}\addcontentsline{toc}{chapter}{Tóm tắt}
+Báo cáo nghiên cứu liệu dữ liệu xổ số miền Bắc có biểu hiện lệch khỏi một cơ chế ngẫu nhiên hay không, đồng thời kiểm tra khả năng khai thác các tín hiệu lịch sử để xếp hạng chữ số và xây dựng chiến lược lựa chọn. Quy trình gồm ba phần: kiểm định thống kê; so sánh các mô hình xác suất và học máy; cuối cùng là backtest chiến lược theo thời gian với validation và final test tách biệt.
+\tableofcontents\listoffigures\listoftables
+\mainmatter
+\include{sections/01_co_so_ly_thuyet}
+\include{sections/02_du_lieu_va_quy_trinh}
+\include{sections/03_kiem_dinh_ngau_nhien}
+\include{sections/04_mo_hinh_du_bao}
+\include{sections/05_chien_luoc_va_backtest}
+\include{sections/06_ket_qua_tong_hop}
+\include{sections/07_ket_luan}
+\backmatter
+\include{sections/08_tai_lieu_tham_khao}
+\end{document}
