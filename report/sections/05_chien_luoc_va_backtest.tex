@@ -1,0 +1,21 @@
+\chapter{CHIẾN LƯỢC VÀ BACKTEST}
+\section{Thiết kế}
+Nghiên cứu xét chiến lược chọn top-$m$ số có xác suất cao nhất và chiến lược selective chỉ tham gia ở các ngày có độ tin cậy cao hơn. Mọi chiến lược được so sánh với baseline ngẫu nhiên.
+
+\section{Validation và final test}
+Validation 2023--2024 dùng để so sánh ứng viên và khóa cấu hình. Final test 2025--2026 chỉ dùng cho đánh giá cuối cùng. Nếu điều chỉnh $m$, mô hình hoặc ngưỡng sau khi xem final test thì kết quả không còn là đánh giá ngoài mẫu.
+
+\section{Chi phí và lợi nhuận}
+Với chi phí 10.000 VND cho mỗi số và tiền trả 800.000 VND khi trúng:
+\[
+\Pi_t=800\,000I_t-10\,000m,\qquad h_{\mathrm{BE}}=\frac{m}{80}.
+\]
+Do đó $m=1$ cần tỷ lệ trúng tối thiểu 1.25\%, $m=3$ cần 3.75\%, và $m=10$ cần 12.5\%. Lợi nhuận cần được xem cùng số ngày tham gia, số lần trúng, baseline và khoảng tin cậy.
+
+\section{Diễn giải}
+Một đường lợi nhuận tăng trong validation nhưng giảm ở final thể hiện hiệu năng chưa ổn định. Selective có thể tăng lợi nhuận quan sát do giảm số ngày tham gia, nhưng cũng làm tăng phương sai và nguy cơ chọn ngưỡng theo nhiễu.
+
+\IfFileExists{../artifacts/p3_strategies/g7_topm_prefix/cumulative_profit_validation_2023_2024.png}{\begin{figure}[H]\centering\includegraphics[width=\linewidth]{../artifacts/p3_strategies/g7_topm_prefix/cumulative_profit_validation_2023_2024.png}\caption{Lợi nhuận tích lũy trên validation.}\end{figure}}{}
+\IfFileExists{../artifacts/p3_strategies/g7_topm_prefix/cumulative_profit_final_test_2025_2026.png}{\begin{figure}[H]\centering\includegraphics[width=\linewidth]{../artifacts/p3_strategies/g7_topm_prefix/cumulative_profit_final_test_2025_2026.png}\caption{Lợi nhuận tích lũy trên final test.}\end{figure}}{}
+\IfFileExists{../artifacts/p3_strategies/g7_topm_prefix/profit_by_m_validation_2023_2024.png}{\begin{figure}[H]\centering\includegraphics[width=\linewidth]{../artifacts/p3_strategies/g7_topm_prefix/profit_by_m_validation_2023_2024.png}\caption{Lợi nhuận theo $m$ trên validation.}\end{figure}}{}
+\IfFileExists{../artifacts/p3_strategies/g7_topm_prefix/profit_by_m_final_test_2025_2026.png}{\begin{figure}[H]\centering\includegraphics[width=\linewidth]{../artifacts/p3_strategies/g7_topm_prefix/profit_by_m_final_test_2025_2026.png}\caption{Lợi nhuận theo $m$ trên final test.}\end{figure}}{}
