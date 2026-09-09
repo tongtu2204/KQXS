@@ -1,0 +1,20 @@
+\chapter{DỮ LIỆU VÀ QUY TRÌNH PHÂN TÍCH}
+\section{Dữ liệu}
+Dữ liệu gồm 191\,511 dòng kết quả, 7\,093 ngày, từ 01/01/2007 đến 06/09/2026. Kết quả được chuẩn hóa theo ngày, giải và vị trí; hai chữ số cuối được giữ dạng chuỗi hai ký tự trong miền $00,\ldots,99$.
+
+\section{Quy trình}
+\begin{enumerate}
+\item Kiểm tra ngày, bản ghi trùng và tính hợp lệ.
+\item Tách chữ số theo vị trí và tạo biến đuôi số.
+\item Phân tích phân phối, độc lập theo vị trí và phụ thuộc thời gian.
+\item Kiểm tra ổn định theo các giai đoạn.
+\item Tạo mục tiêu theo ngày: chữ số bằng 1 nếu xuất hiện trong ít nhất một của 27 kết quả.
+\item Huấn luyện/cập nhật mô hình theo walk-forward.
+\item Đánh giá Brier, log loss, top-$k$, calibration, thứ hạng và lợi nhuận.
+\end{enumerate}
+
+\section{Chống rò rỉ thông tin}
+Dự báo ngày $t$ chỉ sử dụng dữ liệu trước $t$; kết quả ngày $t$ chỉ cập nhật mô hình sau khi dự báo được tạo. Validation 2023--2024 dùng để so sánh và khóa cấu hình. Final test 2025--2026 chỉ dùng cho đánh giá cuối cùng và không được dùng để chọn lại mô hình hay chiến lược.
+
+\section{Tái lập}
+Mã nguồn nằm trong \texttt{experiments/}; kết quả được tổ chức tương ứng trong \texttt{artifacts/p1\_statistical\_tests/}, \texttt{artifacts/p2\_models/} và \texttt{artifacts/p3\_strategies/}.
