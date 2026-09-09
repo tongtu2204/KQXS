@@ -1,0 +1,23 @@
+\chapter{KIỂM ĐỊNH TÍNH NGẪU NHIÊN}
+\section{Thiết kế giả thuyết}
+Kiểm định được thực hiện trên dữ liệu gộp và theo từng giải. Các giả thuyết tương ứng với phân phối lý thuyết, độc lập giữa các vị trí, không có phụ thuộc Markov, không có phụ thuộc theo độ trễ và tính ổn định giữa các giai đoạn.
+
+\begin{table}[H]\centering
+\caption{Số kiểm định và kết quả sau hiệu chỉnh FDR}
+\begin{tabular}{lrr}\toprule
+Nhóm kiểm định & Số kiểm định & Bác bỏ $H_0$\\\midrule
+Phân phối chữ số & 45 & 1\\
+Phân phối đuôi số & 28 hợp lệ & 5\\
+Độc lập giữa vị trí & 90 & 0\\
+Markov lag 1 & 90 & 0\\
+Phụ thuộc lag 1--30 & 2700 & 0\\
+Ổn định theo giai đoạn & 4050 & 0\\\bottomrule
+\end{tabular}\end{table}
+
+\section{Kết quả}
+Sau hiệu chỉnh Benjamini--Hochberg, chỉ một kiểm định trong nhóm phân phối chữ số và năm kiểm định trong nhóm phân phối đuôi số bị bác bỏ. Không có kiểm định nào trong các nhóm độc lập vị trí, Markov lag 1, phụ thuộc lag 1--30 và ổn định theo giai đoạn bị bác bỏ. Các tần suất cao thấp riêng lẻ vì vậy không đủ để suy ra quy luật dự báo.
+
+\section{Trúng đồng thời nhiều giải}
+Tỷ lệ ngày có ít nhất hai giải có thể cùng trúng là 62.63\%; ít nhất ba giải là 0.25\%; ít nhất bốn giải xấp xỉ 0.00\%. Đây là thống kê mô tả, không phải bằng chứng về khả năng dự báo ngày sau.
+
+\IfFileExists{../artifacts/p1_statistical_tests/04b_temporal_stability/figures/05_temporal_stability.png}{\begin{figure}[H]\centering\includegraphics[width=\linewidth]{../artifacts/p1_statistical_tests/04b_temporal_stability/figures/05_temporal_stability.png}\caption{Ổn định của các thống kê theo giai đoạn.}\end{figure}}{}
