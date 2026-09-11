@@ -1,0 +1,7 @@
+\chapter*{Nguồn dữ liệu và khả năng tái lập}\addcontentsline{toc}{chapter}{Nguồn dữ liệu và khả năng tái lập}
+
+Nghiên cứu sử dụng dữ liệu kết quả xổ số miền Bắc được lưu trong kho mã KQXS, nhánh \texttt{lotery-update}. Mỗi ngày có 27 kết quả giải thưởng; các kết quả được chuẩn hóa thành chuỗi năm chữ số trước khi tạo các biến mục tiêu. Toàn bộ mã phân tích, cấu hình chia tập, bảng CSV và hình minh họa được tổ chức trong cùng kho mã để có thể tái chạy.
+
+Quy trình tái lập gồm: kiểm tra và chuẩn hóa dữ liệu; tạo bảng mục tiêu theo ngày; chạy các script trong thư mục \texttt{experiments/p1\_statistical\_tests}, \texttt{experiments/p2\_models} và \texttt{experiments/p3\_strategies}; sau đó biên dịch thư mục báo cáo bằng XeLaTeX. Các mốc thời gian được cố định trước khi đánh giá: giai đoạn phát triển đến hết 2022, validation 2023--2024 và final test 2025--2026.
+
+Báo cáo không xem việc quan sát thấy một sai lệch cục bộ là bằng chứng về tính không ngẫu nhiên của toàn bộ quá trình. Các kết luận được giới hạn trong dữ liệu, định nghĩa mục tiêu, quy tắc trả thưởng và các cấu hình đã kiểm thử.
