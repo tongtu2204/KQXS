@@ -1,6 +1,11 @@
 \chapter{DỮ LIỆU VÀ QUY TRÌNH PHÂN TÍCH}
 \section{Dữ liệu}
-Dữ liệu gồm 191\,511 dòng kết quả, 7\,093 ngày, từ 01/01/2007 đến 06/09/2026. Kết quả được chuẩn hóa theo ngày, giải và vị trí; hai chữ số cuối được giữ dạng chuỗi hai ký tự trong miền $00,\ldots,99$.
+Dữ liệu gồm 191\,511 dòng kết quả, 7\,093 ngày, từ 01/01/2007 đến 06/09/2026. Tập dữ liệu bao phủ 27 giải mỗi ngày, gồm Đặc biệt, giải Nhất đến giải Bảy. Kết quả được chuẩn hóa theo ngày, giải và vị trí; các chuỗi ngắn được bổ sung số 0 ở đầu để bảo toàn độ dài. Hai chữ số cuối được giữ trong miền $00,\ldots,99$.
+
+\section{Quy tắc trả thưởng và mục tiêu thực nghiệm}
+Mỗi vé được biểu diễn bởi một số có năm chữ số. Giải Đặc biệt, giải Nhất, Nhì và Ba yêu cầu khớp đủ năm chữ số; giải Tư và Năm khớp bốn chữ số; giải Sáu khớp ba chữ số; giải Bảy khớp hai chữ số. Phụ Đặc biệt và Khuyến khích Đặc biệt được xử lý theo quy định riêng, trong đó ký hiệu của giải Đặc biệt không được dùng làm đặc trưng dự báo. Một vé có thể đồng thời nhận nhiều giải khi các điều kiện hậu tố cùng thỏa mãn.
+
+Mục tiêu được chia thành hai lớp: (i) dự báo pool chữ số theo từng vị trí, tức chữ số nào có khả năng xuất hiện trong 27 giải; (ii) dự báo trực tiếp số năm chữ số theo từng giải, chủ yếu để đánh giá tính khả thi và mức độ khó của bài toán.
 
 \section{Quy trình}
 \begin{enumerate}
