@@ -1,26 +1,38 @@
 \chapter{MÔ HÌNH DỰ BÁO CHỮ SỐ}
-\section{Biến mục tiêu}
-Với mỗi vị trí và chữ số, mục tiêu bằng 1 nếu chữ số xuất hiện trong ít nhất một của 27 kết quả trong ngày, bằng 0 nếu không xuất hiện. Đây là bài toán phân loại nhị phân nhiều đầu ra, khác với đoán chính xác một số duy nhất từ 00 đến 99.
+\section{Biến mục tiêu và nguyên tắc đánh giá}
+Với mỗi ngày, vị trí và chữ số, mục tiêu bằng 1 nếu chữ số xuất hiện trong ít nhất một của 27 kết quả, bằng 0 nếu không xuất hiện. Như vậy, P2 là bài toán phân loại nhị phân nhiều đầu ra với 50 nhãn, không phải bài toán đoán một số duy nhất từ 00 đến 99.
 
-\section{Mô hình}
-Đường cơ sở là Uniform. Nhóm xác suất gồm CDM/Dirichlet-Multinomial, Rolling CDM và Bayesian Markov; nhóm học máy gồm CatBoost và XGBoost. Các mô hình được đánh giá theo walk-forward, trong đó dữ liệu của ngày hiện tại chỉ được đưa vào trạng thái sau khi dự báo đã hoàn tất.
+Dữ liệu phát triển kết thúc năm 2022; validation gồm 723 ngày của 2023--2024; final test gồm 606 ngày của 2025--2026. Các thước đo chính là Brier score và log loss trên 50 nhãn. Các chỉ số Top-$k$ được tính trên thứ hạng chữ số trong từng vị trí; do mỗi vị trí có thể có nhiều chữ số xuất hiện, Top-$k$ không được diễn giải như xác suất trúng một vé cụ thể.
 
-Đối với bài toán pool, xác suất được ước lượng riêng cho năm vị trí và mười chữ số. Đối với bài toán giải, mô hình dự báo xác suất của số năm chữ số theo từng nhóm giải. Hai bài toán được báo cáo riêng vì pool có thể hỗ trợ xây dựng vé, nhưng không đồng nghĩa với xác suất một vé cụ thể trúng giải cao.
+\section{Các mô hình}
+Đường cơ sở Uniform--27-IID dùng xác suất lý thuyết $1-(9/10)^{27}$ cho mọi chữ số ở mọi vị trí. Nhóm thống kê gồm Expanding Beta, Rolling Beta với cửa sổ 30, 90 và 365 ngày, Dirichlet daily và Markov presence. Nhóm học máy gồm Random Forest, CatBoost và XGBoost. Tất cả mô hình được chạy walk-forward: dự báo ngày $t$ chỉ dùng thông tin trước $t$.
 
-\begin{table}[H]\centering
-\caption{Kết quả validation 2023--2024}
+\section{Kết quả định lượng}
+Bảng~\ref{tab:p2-validation} sử dụng trực tiếp các giá trị trong \texttt{model\_summary.csv}, được sinh từ pipeline đánh giá 50 nhãn. Do đó, các con số trong bảng được làm tròn từ CSV thay vì sao chép mô tả văn bản cũ.
+\begin{table}[H]\centering\small
+\caption{Brier score và log loss trên validation 2023--2024}\label{tab:p2-validation}
 \begin{tabular}{lrr}\toprule
 Mô hình & Brier score & Log loss\\\midrule
-Expanding Beta & 0.097820 & 0.329968\\
-Markov presence & 0.097853 & 0.330118\\
-Rolling Beta 365 & 0.097973 & 0.330935\\
-CatBoost & 0.098313 & 0.332414\\
-Random Forest & 0.098615 & 0.333515\\
-XGBoost & 0.099221 & 0.336660\\
-Rolling Beta 90 & 0.098779 & 0.335109\\
-Rolling Beta 30 & 0.100920 & 0.343546\\
-Dirichlet daily & 0.112701 & 0.397621\\
-Uniform 27-IID & 0.113875 & 0.408108\\\bottomrule
+Uniform--27-IID & 0,106336 & 0,356877\\
+Expanding Beta & 0,106351 & 0,356916\\
+Rolling Beta 365 & 0,106527 & 0,357810\\
+Dirichlet daily & 0,106341 & 0,356877\\
+Markov presence & 0,106389 & 0,357095\\
+Random Forest & 0,107159 & 0,360805\\
+CatBoost & 0,106763 & 0,358974\\
+XGBoost & 0,108023 & 0,364530\\
+Rolling Beta 90 & 0,107390 & 0,361708\\
+Rolling Beta 30 & 0,109681 & 0,369545\\\bottomrule
 \end{tabular}\end{table}
 
-Expanding Beta tốt nhất trên validation theo Brier score và log loss trong bảng benchmark hiện có. CatBoost là mô hình học máy tốt nhất nhưng chưa vượt nhóm Bayesian/Markov. Trên final test 2025--2026, Expanding Beta đạt Brier 0.104579 và log loss 0.351395; Uniform lần lượt 0.104588 và 0.351453, chênh lệch rất nhỏ. Kết quả này chỉ phản ánh mục tiêu pool theo ngày, không được suy diễn thành khả năng đoán chính xác giải Đặc biệt.
+Trên validation, Dirichlet daily gần như tương đương Uniform và Expanding Beta; CatBoost là mô hình học máy tốt nhất nhưng vẫn kém nhóm cơ sở theo Brier. Trên final test, Expanding Beta đạt Brier 0,104579 và log loss 0,351395, còn Uniform đạt 0,104589 và 0,351453. Khoảng cách rất nhỏ, không phải bằng chứng về lợi thế kinh tế.
+
+\begin{figure}[H]\centering\includegraphics[width=0.92\linewidth]{../artifacts/p2_models/figures/brier_validation.png}\caption{So sánh Brier score trên validation.}\end{figure}
+\begin{figure}[H]\centering\includegraphics[width=0.92\linewidth]{../artifacts/p2_models/figures/png/01_brier_by_model.png}\caption{Brier score theo mô hình.}\end{figure}
+\begin{figure}[H]\centering\includegraphics[width=0.92\linewidth]{../artifacts/p2_models/figures/png/02_brier_by_position.png}\caption{Brier score theo vị trí chữ số.}\end{figure}
+\begin{figure}[H]\centering\includegraphics[width=0.92\linewidth]{../artifacts/p2_models/figures/png/03_topk_recall.png}\caption{Độ bao phủ Top-$k$ theo vị trí.}\end{figure}
+\begin{figure}[H]\centering\includegraphics[width=0.92\linewidth]{../artifacts/p2_models/figures/calibration_recreated.png}\caption{Đường calibration được dựng lại từ calibration.csv.}\end{figure}
+\begin{figure}[H]\centering\includegraphics[width=0.92\linewidth]{../artifacts/p2_models/figures/png/05_actual_digit_rank_cdf.png}\caption{Phân phối thứ hạng chữ số thực tế.}\end{figure}
+
+\section{Diễn giải và giới hạn}
+Các đường Top-$k$ gần đường cơ sở lý thuyết: Top 1 bao phủ xấp xỉ 10\%, Top 3 khoảng 30\%, Top 5 khoảng 50\%. Điều này là hệ quả tự nhiên của mười chữ số gần đối xứng, không cho thấy mô hình nhận diện được chữ số “sắp ra”. Mô hình có Brier thấp hơn rất ít vẫn có thể không tạo được lợi nhuận sau khi tính chi phí, số lượng vé và cơ cấu trả thưởng.
