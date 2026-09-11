@@ -25,8 +25,6 @@ jobs:
           working_directory: report
           latexmk_use_xelatex: true
           args: -pdfxe -interaction=nonstopmode -halt-on-error
-      - name: Inspect PDF
-        run: pdfinfo report/main.pdf | grep -E 'Pages|Page size|File size'
       - name: Upload PDF artifact
         uses: actions/upload-artifact@v4
         with:
