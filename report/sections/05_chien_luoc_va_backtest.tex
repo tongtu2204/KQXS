@@ -1,16 +1,19 @@
 \chapter{CHIẾN LƯỢC VÀ BACKTEST}
 \section{Thiết kế}
-Nghiên cứu xét chiến lược chọn top-$m$ số có xác suất cao nhất và chiến lược selective chỉ tham gia ở các ngày có độ tin cậy cao hơn. Mọi chiến lược được so sánh với baseline ngẫu nhiên.
+Nghiên cứu xét chiến lược tạo vé năm chữ số từ các pool chữ số dự báo. Với mỗi vị trí, các chữ số được xếp hạng theo xác suất; vé được tạo bằng tích Descartes của các lựa chọn đã giữ lại, sau đó giới hạn số vé mua mỗi ngày từ 1 đến 10. Ba cấu hình pool chính lần lượt có kích thước $3\times2\times2\times1\times1=12$, $3\times3\times2\times2\times1=36$ và $3\times2\times2\times2\times1=24$. Ngoài ra, chiến lược tập trung giải Bảy chọn mười số hai chữ số rồi kết hợp với các chữ số đứng đầu ở ba vị trí còn lại.
+
+Mọi chiến lược được so sánh với baseline ngẫu nhiên có cùng số vé, cùng chi phí và cùng quy tắc trả thưởng.
 
 \section{Validation và final test}
 Validation 2023--2024 dùng để so sánh ứng viên và khóa cấu hình. Final test 2025--2026 chỉ dùng cho đánh giá cuối cùng. Nếu điều chỉnh $m$, mô hình hoặc ngưỡng sau khi xem final test thì kết quả không còn là đánh giá ngoài mẫu.
 
 \section{Chi phí và lợi nhuận}
-Với chi phí 10.000 VND cho mỗi số và tiền trả 800.000 VND khi trúng:
+Với chi phí 10.000 VND cho mỗi vé. Tiền trả phụ thuộc giải: giải Đặc biệt 25.000.000 VND cho Phụ Đặc biệt, Khuyến khích Đặc biệt 40.000 VND, giải Nhất 10.000.000 VND, giải Nhì 5.000.000 VND, giải Ba 1.000.000 VND, giải Tư 300.000 VND, giải Năm 200.000 VND, giải Sáu 100.000 VND và giải Bảy 40.000 VND. Lợi nhuận ngày được tính bằng tổng tiền nhận từ các giải hợp lệ trừ chi phí vé:
 \[
-\Pi_t=800\,000I_t-10\,000m,\qquad h_{\mathrm{BE}}=\frac{m}{80}.
+\Pi_t=\sum_{g\in G_t}R_g-10\,000m,
 \]
-Do đó $m=1$ cần tỷ lệ trúng tối thiểu 1.25\%, $m=3$ cần 3.75\%, và $m=10$ cần 12.5\%. Lợi nhuận cần được xem cùng số ngày tham gia, số lần trúng, baseline và khoảng tin cậy.
+trong đó $G_t$ là tập giải vé nhận được trong ngày và $R_g$ là tiền trả của giải $g$. Không dùng công thức hòa vốn một mức của bài toán hai chữ số cho toàn bộ chiến lược năm chữ số; mỗi chiến lược phải tính theo đúng cơ cấu giải thưởng.
+Lợi nhuận cần được xem cùng số ngày tham gia, số lần trúng, baseline và khoảng tin cậy.
 
 \section{Diễn giải}
 Một đường lợi nhuận tăng trong validation nhưng giảm ở final thể hiện hiệu năng chưa ổn định. Selective có thể tăng lợi nhuận quan sát do giảm số ngày tham gia, nhưng cũng làm tăng phương sai và nguy cơ chọn ngưỡng theo nhiễu.
