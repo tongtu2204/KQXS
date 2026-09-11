@@ -5,10 +5,14 @@
 \setdefaultlanguage{vietnamese}
 \setmainfont{DejaVu Serif}
 \setsansfont{DejaVu Sans}
+\setmonofont{DejaVu Sans Mono}
+\usepackage{scrextend}
+\changefontsizes{13pt}
 \usepackage[left=3.5cm,right=2cm,top=2cm,bottom=2cm]{geometry}
-\usepackage{amsmath,amssymb,mathtools,graphicx,booktabs,longtable,tabularx,array,multirow,float,placeins,xcolor,enumitem,caption,url,xurl,hyperref,fancyhdr,titlesec,indentfirst}
+\usepackage{amsmath,amssymb,mathtools,graphicx,booktabs,longtable,tabularx,array,multirow,float,placeins,xcolor,enumitem,caption,url,xurl,hyperref,fancyhdr,titlesec,indentfirst,fancybox}
 \setlength{\parindent}{1.2cm}
-\linespread{1.25}\selectfont
+\linespread{1.30}\selectfont
+\emergencystretch=3em
 \setlist[itemize]{leftmargin=1.6em,itemsep=2pt,topsep=3pt}
 \captionsetup{font=normalsize,labelfont=bf,labelsep=period,justification=centering,skip=6pt}
 \hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=blue!55!black}
@@ -26,18 +30,27 @@
 \newcommand{\safeimage}[2]{\IfFileExists{#1}{\begin{figure}[H]\centering\includegraphics[width=\linewidth]{#1}\caption{#2}\end{figure}}{\begin{figure}[H]\centering\fbox{\parbox{0.85\linewidth}{\centering Chưa có tệp hình: \texttt{#1}}}\caption{#2}\end{figure}}}
 \begin{document}
 \begin{titlepage}\centering
-{\large TRƯỜNG ĐẠI HỌC\par}\vspace{0.8cm}
-{\Large\bfseries BÁO CÁO NGHIÊN CỨU\par}\vspace{1cm}
-{\LARGE\bfseries KIỂM ĐỊNH TÍNH NGẪU NHIÊN\\ VÀ DỰ BÁO HAI CHỮ SỐ CUỐI XỔ SỐ MIỀN BẮC\par}
-\vspace{1cm}{\large Phân tích thống kê, mô hình xác suất và đánh giá chiến lược\par}\vfill
+{\large ĐẠI HỌC QUỐC GIA HÀ NỘI\par}
+\vspace{0.2cm}{\large\bfseries TRƯỜNG ĐẠI HỌC KHOA HỌC TỰ NHIÊN\par}
+\vspace{1.5cm}\doublebox{\begin{minipage}{0.88\textwidth}\centering
+{\Large\bfseries BÁO CÁO MÔN KHAI PHÁ DỮ LIỆU\par}\vspace{1cm}
+{\LARGE\bfseries KIỂM ĐỊNH TÍNH NGẪU NHIÊN VÀ DỰ BÁO CHỮ SỐ XỔ SỐ MIỀN BẮC\par}\vspace{0.8cm}
+{\large Phân tích thống kê, mô hình xác suất và đánh giá chiến lược\par}
+\end{minipage}}\par
+\vfill
 \begin{flushleft}\textbf{Sinh viên:} Trần Thế Tài\\
+\textbf{Học phần:} Khai phá dữ liệu\\
 \textbf{Dữ liệu:} Kết quả xổ số miền Bắc, 2007--2026\\
-\textbf{Ngày cập nhật:} 09/2026\end{flushleft}\vfill{\large Hà Nội, 2026\par}
+\textbf{Ngày cập nhật:} 09/2026\end{flushleft}
+\vfill{\large HÀ NỘI -- 09/2026\par}
 \end{titlepage}
 \frontmatter
-\chapter*{Tóm tắt}\addcontentsline{toc}{chapter}{Tóm tắt}
-Báo cáo nghiên cứu liệu dữ liệu xổ số miền Bắc có biểu hiện lệch khỏi một cơ chế ngẫu nhiên hay không, đồng thời kiểm tra khả năng khai thác các tín hiệu lịch sử để xếp hạng chữ số và xây dựng chiến lược lựa chọn. Quy trình gồm ba phần: kiểm định thống kê; so sánh các mô hình xác suất và học máy; cuối cùng là backtest chiến lược theo thời gian với validation và final test tách biệt.
-\tableofcontents\listoffigures\listoftables
+\input{NguonBaibao}
+\input{Tomtat}
+\tableofcontents
+\input{Viettat}
+\listoffigures
+\listoftables
 \mainmatter
 \include{sections/01_co_so_ly_thuyet}
 \include{sections/02_du_lieu_va_quy_trinh}
