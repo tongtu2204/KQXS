@@ -1,26 +1,44 @@
 % !TeX program = xelatex
-% Report build: XeLaTeX (see .github/workflows/build-report.yml)
+% Academic report template adapted from the supplied MauLuanAn template.
 \documentclass[a4paper,12pt,oneside]{book}
+
+% Unicode/Vietnamese typesetting with XeLaTeX.
 \usepackage{fontspec}
 \usepackage{polyglossia}
 \setdefaultlanguage{vietnamese}
 \setmainfont{DejaVu Serif}
 \setsansfont{DejaVu Sans}
 \setmonofont{DejaVu Sans Mono}
+
+% The supplied thesis template uses 13pt body text and margins
+% left/right/top/bottom = 3.5/2/3.5/3 cm.
 \usepackage{scrextend}
 \changefontsizes{13pt}
-\usepackage[left=3.5cm,right=2cm,top=2cm,bottom=2cm]{geometry}
-\usepackage{amsmath,amssymb,mathtools,graphicx,booktabs,longtable,tabularx,array,multirow,float,placeins,xcolor,enumitem,caption,url,xurl,hyperref,fancyhdr,titlesec,indentfirst,fancybox}
+\usepackage[left=3.5cm,right=2cm,top=3.5cm,bottom=3cm]{geometry}
+
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{graphicx,booktabs,longtable,tabularx,array,multirow}
+\usepackage{float,placeins,xcolor,enumitem,caption}
+\usepackage{url,xurl,hyperref}
+\usepackage{fancyhdr,titlesec,indentfirst,fancybox}
+
 \setlength{\parindent}{1.2cm}
-\linespread{1.30}\selectfont
+\setlength{\parskip}{0pt}
 \emergencystretch=3em
 \setlist[itemize]{leftmargin=1.6em,itemsep=2pt,topsep=3pt}
+\setlist[enumerate]{leftmargin=1.8em,itemsep=2pt,topsep=3pt}
 \captionsetup{font=normalsize,labelfont=bf,labelsep=period,justification=centering,skip=6pt}
 \hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=blue!55!black}
-\titleformat{\chapter}[display]{\normalfont\Large\bfseries\centering}{\chaptertitlename\ \thechapter}{0pt}{\Large}
-\titlespacing*{\chapter}{0pt}{0pt}{15pt}
-\titleformat*{\section}{\bfseries\fontsize{13}{16}\selectfont}
-\titleformat*{\subsection}{\bfseries\fontsize{13}{16}\selectfont}
+
+% Chapter/section typography follows the supplied thesis template.
+\titleformat{\chapter}[display]
+  {\normalfont\Large\bfseries\centering}
+  {\chaptertitlename\ \thechapter}{5pt}{\Large}
+\titlespacing*{\chapter}{0pt}{10pt}{30pt}
+\titleformat*{\section}{\bfseries\fontsize{13}{14}\selectfont}
+\titleformat*{\subsection}{\bfseries\fontsize{13}{14}\selectfont}
+\titleformat*{\subsubsection}{\bfseries\fontsize{13}{14}\selectfont}
+
 \renewcommand{\chaptername}{CHƯƠNG}
 \renewcommand{\contentsname}{MỤC LỤC}
 \renewcommand{\listfigurename}{DANH MỤC HÌNH VẼ}
@@ -28,31 +46,90 @@
 \renewcommand{\figurename}{Hình}
 \renewcommand{\tablename}{Bảng}
 \numberwithin{equation}{chapter}
-\newcommand{\safeimage}[2]{\IfFileExists{#1}{\begin{figure}[H]\centering\includegraphics[width=\linewidth]{#1}\caption{#2}\end{figure}}{\begin{figure}[H]\centering\fbox{\parbox{0.85\linewidth}{\centering Chưa có tệp hình: \texttt{#1}}}\caption{#2}\end{figure}}}
+
+% Page-number style adapted from the supplied thesis template: centered footer,
+% no running header and no decorative rules.
+\fancypagestyle{myplain}{%
+  \fancyhf{}
+  \renewcommand{\headrulewidth}{0pt}
+  \renewcommand{\footrulewidth}{0pt}
+  \fancyfoot[C]{\thepage}
+}
+\pagestyle{myplain}
+\makeatletter
+\let\ps@plain\ps@myplain
+\makeatother
+
+\newcommand{\safeimage}[2]{%
+  \IfFileExists{#1}{%
+    \begin{figure}[H]\centering
+      \includegraphics[width=\linewidth]{#1}
+      \caption{#2}
+    \end{figure}%
+  }{%
+    \begin{figure}[H]\centering
+      \fbox{\parbox{0.85\linewidth}{\centering Chưa có tệp hình: \texttt{#1}}}
+      \caption{#2}
+    \end{figure}%
+  }%
+}
+
 \begin{document}
-\begin{titlepage}\centering
-{\large ĐẠI HỌC QUỐC GIA HÀ NỘI\par}
-\vspace{0.2cm}{\large\bfseries TRƯỜNG ĐẠI HỌC KHOA HỌC TỰ NHIÊN\par}
-\vspace{1.5cm}\doublebox{\begin{minipage}{0.88\textwidth}\centering
-{\Large\bfseries BÁO CÁO MÔN KHAI PHÁ DỮ LIỆU\par}\vspace{1cm}
-{\LARGE\bfseries KIỂM ĐỊNH TÍNH NGẪU NHIÊN VÀ DỰ BÁO CHỮ SỐ XỔ SỐ MIỀN BẮC\par}\vspace{0.8cm}
+
+% -----------------------------------------------------------------------------
+% COVER -- double-frame layout adapted from MauLuanAn/bia1.tex.
+% -----------------------------------------------------------------------------
+\begin{titlepage}
+\thispagestyle{empty}
+\thisfancypage{\setlength{\fboxrule}{2pt}\doublebox}{}
+\centering
+\fontsize{15pt}{18pt}\selectfont
+{ĐẠI HỌC QUỐC GIA HÀ NỘI\par}
+\vspace{0.15cm}
+{\bfseries TRƯỜNG ĐẠI HỌC KHOA HỌC TỰ NHIÊN\par}
+
+\vspace*{2.4cm}
+{\Large\bfseries TRẦN THẾ TÀI\par}
+
+\vspace*{2.7cm}
+{\Large\bfseries KIỂM ĐỊNH TÍNH NGẪU NHIÊN VÀ DỰ BÁO CHỮ SỐ\\[0.25cm]
+XỔ SỐ MIỀN BẮC\par}
+
+\vspace*{2.1cm}
+{\large\bfseries BÁO CÁO HỌC PHẦN\par}
+\vspace{0.35cm}
 {\large Phân tích thống kê, mô hình xác suất và đánh giá chiến lược\par}
-\end{minipage}}\par
+
 \vfill
-\begin{flushleft}\textbf{Sinh viên:} Trần Thế Tài\\
+\begin{minipage}{0.78\textwidth}
+\fontsize{13pt}{19pt}\selectfont
+\textbf{Sinh viên:} Trần Thế Tài\\
 \textbf{Học phần:} Khai phá dữ liệu\\
 \textbf{Dữ liệu:} Kết quả xổ số miền Bắc, 2007--2026\\
-\textbf{Ngày cập nhật:} 09/2026\end{flushleft}
-\vfill{\large HÀ NỘI -- 09/2026\par}
+\textbf{Ngày cập nhật:} 09/2026
+\end{minipage}
+
+\vfill
+{\bfseries HÀ NỘI -- 2026\par}
+\vspace*{0.3cm}
 \end{titlepage}
+
+% Front matter follows the thesis convention: Roman page numbering and
+% a more open 13/20 leading for preliminary sections.
 \frontmatter
+\fontsize{13pt}{20pt}\selectfont
 \input{NguonBaibao}
 \input{Tomtat}
+
+\setcounter{tocdepth}{2}
 \tableofcontents
 \input{Viettat}
 \listoffigures
 \listoftables
+
+% Main content restarts Arabic numbering at page 1, as in the supplied template.
 \mainmatter
+\fontsize{13pt}{18pt}\selectfont
 \include{sections/01_co_so_ly_thuyet}
 \include{sections/02_du_lieu_va_quy_trinh}
 \include{sections/03_kiem_dinh_ngau_nhien}
@@ -60,6 +137,8 @@
 \include{sections/05_chien_luoc_va_backtest}
 \include{sections/06_ket_qua_tong_hop}
 \include{sections/07_ket_luan}
+
 \backmatter
+\fontsize{13pt}{18pt}\selectfont
 \include{sections/08_tai_lieu_tham_khao}
 \end{document}
