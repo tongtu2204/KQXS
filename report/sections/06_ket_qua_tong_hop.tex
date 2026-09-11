@@ -3,7 +3,9 @@
 Phần 1 không tìm thấy phụ thuộc thời gian có hệ thống sau hiệu chỉnh nhiều kiểm định. Vì vậy, mô hình dự báo được xem là phép kiểm tra thực nghiệm về khả năng cải thiện ngoài mẫu, không phải giả định rằng dữ liệu chắc chắn có quy luật.
 
 \section{So sánh mô hình}
-Expanding Beta đứng đầu validation, trong khi CatBoost là mô hình học máy tốt nhất. Tuy nhiên chênh lệch giữa Expanding Beta và Uniform trên final test rất nhỏ. Top-$k$ cao ở $k$ lớn một phần do mục tiêu có độ phủ nhiều chữ số; không nên diễn giải như đoán một số duy nhất từ 00--99.
+Expanding Beta đứng đầu validation, trong khi CatBoost là mô hình học máy tốt nhất. Tuy nhiên chênh lệch giữa Expanding Beta và Uniform trên final test rất nhỏ. Top-$k$ cao ở $k$ lớn một phần do mục tiêu pool có độ phủ nhiều chữ số; không nên diễn giải như mô hình đã dự đoán chính xác một số năm chữ số.
+
+Đối với mục tiêu giải, xác suất trúng một vé cụ thể nhỏ hơn rất nhiều so với xác suất một chữ số xuất hiện trong toàn bộ 27 giải. Vì vậy, báo cáo tách hai mục tiêu và chỉ sử dụng pool prediction để hỗ trợ sinh ứng viên, sau đó đánh giá trực tiếp vé theo kết quả thực tế và quy tắc trả thưởng.
 
 \section{Ý nghĩa thực tiễn}
 Lợi nhuận dương trong một giai đoạn không đủ chứng minh lợi thế dài hạn. Nếu kết quả không tái lập ở giai đoạn khác, kết luận phù hợp là hiệu năng chưa ổn định. Cần báo cáo khoảng tin cậy, nhiều giai đoạn rolling và số lần thử chiến lược.
