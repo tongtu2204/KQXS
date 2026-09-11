@@ -9,6 +9,9 @@ on:
       - '.github/workflows/build-report.yml'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -24,9 +27,22 @@ jobs:
           args: -pdfxe -interaction=nonstopmode -halt-on-error
       - name: Inspect PDF
         run: pdfinfo report/main.pdf | grep -E 'Pages|Page size|File size'
-      - name: Upload PDF
+      - name: Upload PDF artifact
         uses: actions/upload-artifact@v4
         with:
           name: report-pdf
           path: report/main.pdf
           if-no-files-found: error
+      - name: Commit compiled PDF
+        run: |
+          mkdir -p output/pdf
+          cp report/main.pdf output/pdf/main.pdf
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add output/pdf/main.pdf
+          if git diff --cached --quiet; then
+            echo 'Compiled PDF is unchanged.'
+          else
+            git commit -m 'Build updated academic report PDF'
+            git push
+          fi
