@@ -1,38 +1,146 @@
 \chapter{CƠ SỞ LÝ THUYẾT}
+
 \section{Bài toán nghiên cứu}
-Mỗi ngày xổ số tạo ra nhiều kết quả thuộc các giải khác nhau. Nghiên cứu tập trung vào chữ số theo vị trí và hai chữ số cuối. Mục tiêu thứ nhất là kiểm tra dữ liệu có phù hợp với cơ chế ngẫu nhiên hay không. Mục tiêu thứ hai là xây dựng xác suất từ dữ liệu quá khứ và kiểm tra khả năng cải thiện ngoài mẫu.
+Mỗi ngày, xổ số kiến thiết miền Bắc công bố nhiều kết quả thuộc các hạng giải khác nhau. Trong nghiên cứu này, mỗi kết quả được biểu diễn theo các chữ số ở từng vị trí, từ hàng chục nghìn đến hàng đơn vị khi vị trí tương ứng tồn tại. Hai nhóm câu hỏi được đặt ra. Thứ nhất, dữ liệu lịch sử có cung cấp bằng chứng thống kê về sự lệch khỏi cơ chế ngẫu nhiên, tính độc lập theo vị trí hoặc tính độc lập theo thời gian hay không. Thứ hai, nếu tồn tại các sai lệch nhỏ trong phân phối thực nghiệm, liệu chúng có đủ ổn định để các mô hình xác suất và học máy cải thiện dự báo ngoài mẫu và hỗ trợ xây dựng chiến lược có hiệu quả kinh tế hay không.
 
-\section{Ngẫu nhiên và độc lập}
-Một dãy quan sát phù hợp với mô hình ngẫu nhiên cơ bản nếu các chữ số có phân phối gần đồng đều, các vị trí không có phụ thuộc đáng kể, kết quả ngày hôm nay không cung cấp thông tin có hệ thống cho ngày mai, và đặc trưng không thay đổi giữa các giai đoạn. Không bác bỏ $H_0$ không chứng minh tuyệt đối tính độc lập.
+Đối với bài toán dự báo theo ngày, tại mỗi vị trí $j$ và chữ số $d\in\{0,\ldots,9\}$, biến mục tiêu nhị phân được định nghĩa
+\[
+Y_{t,j,d}=\begin{cases}
+1, & \text{nếu chữ số }d\text{ xuất hiện tại vị trí }j\text{ trong ngày }t,\\
+0, & \text{ngược lại.}
+\end{cases}
+\]
+Như vậy, bài toán dự báo chính có thể xem là bài toán multi-label gồm $5\times10=50$ mục tiêu nhị phân. Mô hình không chỉ đưa ra nhãn dự báo mà quan trọng hơn là ước lượng xác suất $\hat p_{t,j,d}=P(Y_{t,j,d}=1\mid\mathcal F_{t-1})$, trong đó $\mathcal F_{t-1}$ biểu diễn toàn bộ thông tin hợp lệ trước ngày dự báo.
 
-\section{Các kiểm định}
-Với tần suất quan sát $O_k$ và kỳ vọng $E_k$, thống kê Chi-square là
+\section{Ngẫu nhiên, đồng đều và độc lập}
+Một chuỗi kết quả phù hợp với cơ chế ngẫu nhiên cơ bản khi phân phối chữ số không khác đáng kể so với phân phối kỳ vọng, quan hệ giữa các vị trí đủ yếu, kết quả trong quá khứ không tạo ra khả năng dự báo có hệ thống cho tương lai và các đặc trưng phân phối tương đối ổn định theo thời gian. Các khái niệm này cần được phân biệt: phân phối biên gần đồng đều không đồng nghĩa với độc lập, và độc lập giữa các vị trí không đảm bảo độc lập theo thời gian.
+
+Trong kiểm định giả thuyết, việc không bác bỏ $H_0$ không phải là bằng chứng tuyệt đối rằng chuỗi hoàn toàn ngẫu nhiên; nó chỉ cho thấy dữ liệu hiện có chưa cung cấp đủ bằng chứng thống kê để bác bỏ giả thuyết không. Ngược lại, một sai lệch có ý nghĩa thống kê cũng chưa đồng nghĩa với khả năng dự báo hoặc khả năng sinh lợi thực tế. Vì vậy, báo cáo tách biệt ba lớp đánh giá: ý nghĩa thống kê, chất lượng dự báo ngoài mẫu và hiệu quả của chiến lược backtest.
+
+\section{Kiểm định Chi-square, Cramér's V và hiệu chỉnh đa kiểm định}
+Với tần suất quan sát $O_k$ và tần suất kỳ vọng $E_k$, thống kê Pearson Chi-square được xác định bởi
 \[
 \chi^2=\sum_{k=1}^{K}\frac{(O_k-E_k)^2}{E_k}.
 \]
-Phụ thuộc giữa hai biến phân loại có thể mô tả bằng Cramér's V:
-\[
-V=\sqrt{\frac{\chi^2}{N\min(r-1,c-1)}}.
-\]
-Với nhiều kiểm định, báo cáo dùng hiệu chỉnh Benjamini--Hochberg và ngưỡng $q<0.05$ để kiểm soát false discovery rate.
+Kiểm định này được sử dụng để đánh giá mức độ phù hợp với phân phối kỳ vọng hoặc sự độc lập giữa các biến phân loại. Tuy nhiên, khi kích thước mẫu lớn, một khác biệt rất nhỏ cũng có thể tạo ra $p$-value thấp. Do đó, bên cạnh ý nghĩa thống kê cần báo cáo kích thước hiệu ứng.
 
-\section{Mô hình xác suất}
-Phân phối Beta là tiên nghiệm liên hợp cho xác suất nhị phân:
+Đối với hai biến phân loại, Cramér's V được dùng như một thước đo cường độ phụ thuộc:
 \[
-p\sim\operatorname{Beta}(\alpha,\beta),\qquad
-p\mid D\sim\operatorname{Beta}(\alpha+s,\beta+f).
+V=\sqrt{\frac{\chi^2}{N\min(r-1,c-1)}},
 \]
-Mô hình Expanding Beta dùng toàn bộ lịch sử trước ngày dự báo; Rolling Beta chỉ dùng cửa sổ gần nhất. Mô hình Markov bậc một giả định $P(Y_t\mid Y_{t-1},\ldots)=P(Y_t\mid Y_{t-1})$.
+trong đó $N$ là số quan sát, $r$ và $c$ lần lượt là số hàng và số cột của bảng chéo. Giá trị $V$ gần 0 cho thấy quan hệ thực nghiệm yếu, ngay cả khi kiểm định Chi-square có thể đạt ý nghĩa thống kê.
 
-\section{Đánh giá xác suất và lợi nhuận}
-Brier score và log loss lần lượt là
+Do nghiên cứu thực hiện đồng thời nhiều kiểm định trên các vị trí, giải và độ trễ khác nhau, sử dụng trực tiếp ngưỡng $p<0.05$ làm tăng nguy cơ phát hiện giả. Báo cáo áp dụng thủ tục Benjamini--Hochberg và sử dụng $q<0.05$ để kiểm soát false discovery rate (FDR).
+
+\section{Xích Markov và phụ thuộc theo thời gian}
+\subsection{Tính chất Markov}
+Xích Markov là mô hình xác suất cho một quá trình mà phân phối của trạng thái kế tiếp, khi biết trạng thái hiện tại, không phụ thuộc trực tiếp vào toàn bộ lịch sử trước đó. Với xích Markov bậc một,
 \[
-\operatorname{BS}=\frac{1}{n}\sum_i(\hat p_i-y_i)^2,
-\quad
-\operatorname{LL}=-\frac{1}{n}\sum_i[y_i\log\hat p_i+(1-y_i)\log(1-\hat p_i)].
+P(X_t=x_t\mid X_{t-1},X_{t-2},\ldots,X_0)
+=P(X_t=x_t\mid X_{t-1}).
 \]
-Với chi phí $c$ cho mỗi số và tiền trả $r$, mua $m$ số có lợi nhuận ngày
+Nếu không gian trạng thái gồm các chữ số $\{0,1,\ldots,9\}$, xác suất chuyển từ trạng thái $i$ sang $j$ được ký hiệu
 \[
-\Pi_t=rI_t-mc,\qquad h_{\mathrm{BE}}=\frac{mc}{r}.
+p_{ij}=P(X_t=j\mid X_{t-1}=i),
 \]
-Trong thí nghiệm, $c=10\,000$ VND và $r=800\,000$ VND.
+và ma trận chuyển trạng thái là
+\[
+\mathbf P=(p_{ij})_{10\times10},\qquad \sum_{j=0}^{9}p_{ij}=1.
+\]
+Nếu kết quả giữa hai ngày thực sự độc lập, phân phối điều kiện theo trạng thái ngày trước không nên khác có hệ thống so với phân phối biên. Vì vậy, phân tích ma trận chuyển và kiểm định theo từng vị trí cung cấp một cách trực tiếp để kiểm tra dấu hiệu phụ thuộc thời gian bậc một.
+
+\subsection{Markov nhị phân cho sự xuất hiện của chữ số}
+Trong phần dự báo, nghiên cứu sử dụng biến trạng thái nhị phân cho từng cặp vị trí--chữ số: $Y_t\in\{0,1\}$ cho biết chữ số đó có xuất hiện trong ngày hay không. Khi đó mô hình Markov ước lượng hai xác suất chính
+\[
+P(Y_t=1\mid Y_{t-1}=1),\qquad
+P(Y_t=1\mid Y_{t-1}=0).
+\]
+Để tránh xác suất bằng 0 hoặc 1 do số lần chuyển trạng thái hữu hạn, xác suất được làm trơn Laplace. Chẳng hạn,
+\[
+\hat p_{1\to1}=\frac{N_{11}+1}{N_{10}+N_{11}+2},
+\]
+trong đó $N_{ab}$ là số lần quan sát chuyển từ trạng thái $a$ sang $b$. Có thể diễn giải phép làm trơn này dưới góc nhìn Bayes với tiên nghiệm $\operatorname{Beta}(1,1)$ cho mỗi xác suất chuyển nhị phân. Mô hình Markov vì vậy vừa là một baseline dự báo, vừa là phép kiểm tra thực nghiệm xem thông tin ngày liền trước có tạo ra cải thiện so với mô hình không điều kiện hay không.
+
+\section{Các mô hình xác suất và tần suất cơ sở}
+\subsection{Mô hình đồng đều}
+Uniform baseline mô tả giả thuyết không có chữ số nào được ưu tiên. Khi một vị trí nhận $m_j$ lượt quay hợp lệ trong ngày và mỗi lượt có xác suất $0.1$ cho một chữ số cụ thể, xác suất chữ số đó xuất hiện ít nhất một lần là
+\[
+p_j=1-(1-0.1)^{m_j}=1-0.9^{m_j}.
+\]
+Đây là mốc tham chiếu quan trọng: một mô hình phức tạp chỉ có giá trị dự báo khi cải thiện ổn định so với baseline đơn giản trên dữ liệu ngoài mẫu.
+
+\subsection{Tần suất mở rộng và cửa sổ trượt}
+Với một mục tiêu nhị phân $Y_t$, expanding frequency sử dụng toàn bộ lịch sử hợp lệ trước thời điểm dự báo:
+\[
+\hat p_t=\frac{1}{t-1}\sum_{s<t}Y_s.
+\]
+Rolling frequency chỉ sử dụng $w$ quan sát gần nhất,
+\[
+\hat p_t^{(w)}=\frac{1}{w}\sum_{s=t-w}^{t-1}Y_s.
+\]
+Cửa sổ dài tạo ước lượng ổn định hơn nhưng phản ứng chậm với thay đổi; cửa sổ ngắn nhạy hơn với biến động gần đây nhưng có phương sai lớn hơn. Việc so sánh nhiều độ dài cửa sổ do đó giúp kiểm tra liệu dữ liệu có chứa tính không dừng hoặc tín hiệu ngắn hạn đủ mạnh để dự báo hay không.
+
+\section{Nền tảng học máy cho bài toán dự báo}
+\subsection{Học có giám sát và đặc trưng trễ}
+Các mô hình học máy trong nghiên cứu thuộc nhóm học có giám sát. Từ dữ liệu lịch sử, thuật toán học một ánh xạ
+\[
+f:\mathbf x_t\mapsto \hat p_t,
+\]
+trong đó $\mathbf x_t$ chỉ chứa thông tin có sẵn trước thời điểm $t$. Các đặc trưng chính gồm trạng thái xuất hiện của chữ số tại các độ trễ 1, 2, 3, 7, 14 và 30 ngày cùng một số biến lịch dạng chu kỳ. Việc dịch trễ đặc trưng đảm bảo không sử dụng kết quả của ngày cần dự báo.
+
+Vì đây là dữ liệu theo thời gian, chia ngẫu nhiên train/test có thể gây rò rỉ thông tin và đánh giá quá lạc quan. Nghiên cứu do đó sử dụng chia tập theo thời gian: mô hình chỉ được huấn luyện trên giai đoạn quá khứ, lựa chọn cấu hình trên validation và đánh giá chiến lược cuối cùng trên giai đoạn tương lai chưa được dùng để lựa chọn mô hình.
+
+\subsection{Random Forest}
+Random Forest là phương pháp ensemble kết hợp nhiều cây quyết định. Mỗi cây được xây dựng từ mẫu bootstrap và chỉ xem xét một tập con đặc trưng tại mỗi phép chia. Với bài toán phân loại, xác suất cuối cùng có thể thu được bằng cách tổng hợp xác suất từ các cây:
+\[
+\hat p(\mathbf x)=\frac{1}{B}\sum_{b=1}^{B}\hat p_b(\mathbf x),
+\]
+trong đó $B$ là số cây. Cơ chế lấy mẫu và ngẫu nhiên hóa đặc trưng giúp giảm tương quan giữa các cây và thường làm giảm phương sai so với một cây quyết định đơn. Trong nghiên cứu, Random Forest đóng vai trò mô hình ML cơ sở để kiểm tra liệu quan hệ phi tuyến giữa các đặc trưng trễ có tạo ra thông tin dự báo ngoài mẫu hay không.
+
+\subsection{Gradient Boosting}
+Khác với Random Forest xây dựng nhiều cây tương đối độc lập, gradient boosting xây dựng mô hình theo trình tự. Ở vòng lặp $m$, một cây mới được thêm vào để giảm phần sai số còn lại của tổ hợp hiện tại:
+\[
+F_m(\mathbf x)=F_{m-1}(\mathbf x)+\eta f_m(\mathbf x),
+\]
+trong đó $\eta$ là learning rate. Nhờ quá trình cộng dồn các weak learners, boosting có khả năng biểu diễn các quan hệ phi tuyến và tương tác phức tạp giữa các đặc trưng. Tuy nhiên, độ sâu cây, learning rate, số vòng boosting và regularization phải được kiểm soát để hạn chế overfitting.
+
+\subsection{XGBoost}
+XGBoost là một biến thể gradient-boosted trees có hàm mục tiêu tổng quát
+\[
+\mathcal L^{(t)}=\sum_{i=1}^{n}l\!\left(y_i,\hat y_i^{(t)}\right)
++\sum_{k=1}^{t}\Omega(f_k),
+\]
+trong đó $l$ là hàm mất mát và $\Omega(f_k)$ là thành phần regularization cho độ phức tạp của cây. Đối với mục tiêu nhị phân của nghiên cứu, mô hình tối ưu binary logistic loss và trả về xác suất xuất hiện của từng chữ số. Các cơ chế shrinkage, subsampling, column sampling và regularization giúp cân bằng giữa khả năng học quan hệ phức tạp và nguy cơ khớp nhiễu trong dữ liệu xổ số.
+
+\subsection{CatBoost}
+CatBoost cũng thuộc họ gradient boosting trên cây quyết định. Thuật toán phát triển các cơ chế như ordered boosting nhằm giảm prediction shift và hạn chế một số dạng overfitting trong quá trình boosting. Trong bài toán này, CatBoost được sử dụng như một mô hình phi tuyến độc lập để đối chiếu với XGBoost trên cùng tập đặc trưng và cùng giao thức chia thời gian. Do dữ liệu đầu vào của thí nghiệm chủ yếu là đặc trưng số và nhị phân, mục tiêu so sánh không nằm ở khả năng xử lý biến phân loại đặc trưng của CatBoost mà ở khả năng học hàm xác suất khác nhau của hai thuật toán boosting.
+
+\section{Đánh giá dự báo xác suất}
+\subsection{Brier score và log loss}
+Với dự báo xác suất $\hat p_i$ và nhãn $y_i\in\{0,1\}$, Brier score được định nghĩa
+\[
+\operatorname{BS}=\frac{1}{n}\sum_{i=1}^{n}(\hat p_i-y_i)^2.
+\]
+Brier score càng thấp càng tốt và đánh giá trực tiếp độ chính xác của xác suất. Log loss được xác định bởi
+\[
+\operatorname{LL}=-\frac{1}{n}\sum_{i=1}^{n}\left[y_i\log\hat p_i+(1-y_i)\log(1-\hat p_i)\right].
+\]
+Log loss phạt mạnh các dự báo tự tin nhưng sai. Vì mục tiêu cuối cùng cần xếp hạng chữ số và xây dựng chiến lược từ xác suất, hai thước đo này phù hợp hơn việc chỉ sử dụng accuracy tại một ngưỡng phân loại cố định.
+
+\subsection{Calibration và Top-$k$ recall}
+Một mô hình được xem là hiệu chỉnh tốt nếu trong nhóm các dự báo có xác suất xấp xỉ $p$, tỷ lệ xảy ra quan sát được cũng xấp xỉ $p$. Calibration vì vậy trả lời câu hỏi khác với ranking: mô hình có thể xếp hạng tốt nhưng xác suất dự báo vẫn quá cao hoặc quá thấp.
+
+Đối với mỗi vị trí, các chữ số được sắp giảm dần theo xác suất. Top-$k$ recall đo tỷ lệ chữ số thực tế được bao phủ bởi $k$ lựa chọn có xác suất cao nhất. Chỉ số này nối trực tiếp phần dự báo với phần chiến lược, bởi số lượng chữ số được giữ lại tại từng vị trí quyết định kích thước không gian vé ứng viên và chi phí đầu tư.
+
+\section{Đánh giá chiến lược và lợi nhuận}
+Đối với một chiến lược mua tập vé $S_t$ trong ngày $t$, lợi nhuận được tính tổng quát bởi
+\[
+\Pi_t=R_t(S_t)-c\,|S_t|,
+\]
+trong đó $c$ là giá mỗi vé, $|S_t|$ là số vé mua và $R_t(S_t)$ là tổng tiền thưởng thực tế theo toàn bộ các quy tắc giải mà các vé trong $S_t$ đạt được. Tỷ suất hoàn vốn được tính
+\[
+\operatorname{ROI}=\frac{\sum_t \Pi_t}{\sum_t c|S_t|}.
+\]
+Do cơ cấu giải thưởng phụ thuộc số chữ số khớp và loại giải, không sử dụng một mức thưởng cố định cho mọi lần trúng. Việc đánh giá chiến lược phải thực hiện trên giai đoạn ngoài mẫu, đồng thời xem xét lợi nhuận tích lũy, ROI, tần suất trúng và mức biến động thay vì kết luận từ một vài ngày có giải thưởng lớn.
+
+Tách biệt giai đoạn lựa chọn chiến lược và giai đoạn final test là điều kiện quan trọng để hạn chế selection bias. Một cấu hình có lợi nhuận cao trên validation chỉ được xem là có bằng chứng thực nghiệm mạnh hơn khi tiếp tục duy trì kết quả trên giai đoạn final test chưa tham gia vào quá trình lựa chọn.
