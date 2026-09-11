@@ -1,0 +1,35 @@
+name: Build LaTeX report
+
+on:
+  push:
+    branches: [lotery-update]
+    paths:
+      - 'report/**'
+      - 'artifacts/**'
+      - '.github/workflows/build-report.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install XeLaTeX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y texlive-xetex texlive-latex-extra texlive-fonts-recommended fonts-texgyre ghostscript
+      - name: Compile report
+        working-directory: report
+        run: |
+          xelatex -interaction=nonstopmode -halt-on-error main.tex
+          xelatex -interaction=nonstopmode -halt-on-error main.tex
+      - name: Inspect PDF
+        run: |
+          pdfinfo report/main.pdf | grep -E 'Pages|Page size|File size'
+      - name: Upload PDF
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-pdf
+          path: report/main.pdf
+          if-no-files-found: error
